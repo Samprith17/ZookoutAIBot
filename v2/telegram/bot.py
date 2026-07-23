@@ -15,7 +15,7 @@ from v2.ai.intent import detect_intent
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Welcome to Zookout AI!\n\n"
-        "I can help you discover amazing deals.\n\n"
+        "I can help you discover amazing local deals and experiences.\n\n"
         "Examples:\n"
         "🍽 Restaurant in Mumbai\n"
         "💆 Spa under ₹1000\n"
@@ -37,14 +37,14 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("[OK] Greeting detected")
         await update.message.reply_text(
             "👋 Hello! Welcome to Zookout AI.\n\n"
-            "How can I help you today?"
+            "How can I help you find deals today?"
         )
         return
 
     # Help
     if intent["type"] == "help":
         await update.message.reply_text(
-            "🤖 I can help you find amazing deals.\n\n"
+            "🤖 I can help you find amazing deals & answer questions about Zookout.\n\n"
             "Examples:\n"
             "🍽 Restaurant in Mumbai\n"
             "💆 Spa under ₹1000\n"
@@ -66,16 +66,29 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # Out of Scope
+    if intent["type"] == "out_of_scope":
+        await update.message.reply_text(
+            "I'm designed to help with Zookout experiences, bookings, vouchers, and local deals. I can't reliably answer unrelated questions."
+        )
+        return
+
+    # FAQ
+    if intent["type"] == "faq":
+        await update.message.reply_text(intent["faq_answer"])
+        return
+
     # Search deals
     results = search_deals(intent)
 
     if not results:
         await update.message.reply_text(
-            "❌ No matching deals found.\n\n"
-            "Try:\n"
+            "I couldn't find an exact match.\n\n"
+            "Try searching for:\n"
             "• Restaurant in Mumbai\n"
             "• Spa under ₹1000\n"
-            "• Cafe in Bandra"
+            "• Cafe in Bandra\n\n"
+            "Would you like to see similar options?"
         )
         return
 
