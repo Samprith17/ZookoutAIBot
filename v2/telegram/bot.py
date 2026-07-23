@@ -11,12 +11,16 @@ from telegram.ext import (
 from config import BOT_TOKEN
 from v2.search.search_engine import search_deals
 from v2.ai.intent import detect_intent
+from v2.ai.memory import memory_manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    memory_manager.clear_context(user_id)
+
     await update.message.reply_text(
         "👋 Welcome to Zookout AI!\n\n"
         "I can help you discover amazing local deals and experiences.\n\n"
@@ -33,11 +37,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
         message = update.message.text.strip()
-        intent = detect_intent(message)
 
+        # Step 1: Detect intent from raw message
+        raw_intent = detect_intent(message)
+
+        # Step 2: Merge with conversation memory
+        intent = memory_manager.update_context(user_id, raw_intent)
+
+        print("User ID:", user_id)
         print("Message:", message)
-        print("Intent:", intent)
+        print("Merged Intent:", intent)
 
         if intent["type"] == "greeting":
             await update.message.reply_text(
@@ -62,6 +73,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if intent["type"] == "bye":
+            memory_manager.clear_context(user_id)
             await update.message.reply_text("👋 Goodbye! Have a wonderful day.")
             return
 
@@ -75,6 +87,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(intent["faq_answer"])
             return
 
+        # Step 3: Search deals using merged intent
         results = search_deals(intent)
 
         if not results:
