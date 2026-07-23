@@ -21,8 +21,8 @@ DEALS = load_deals()
 
 def clean_offer_title(deal: Dict[str, Any]) -> str:
     """
-    Intelligent Offer Title Extraction Engine (Milestone 4.2):
-    Strips OCR junk, trailing concatenated words (e.g. 'Beersppaaiyre', 'B U Y'), single word junk ('Midnight'),
+    Intelligent Offer Title Extraction Engine (Milestone 6.1):
+    Rejects OCR junk, trailing concatenated words (e.g. 'B U Yp Athyi', 'Beersppaaiyre', 'Midnight'),
     and outputs 100% human-readable titles.
     """
     title = (deal.get("title") or "").strip()
@@ -30,14 +30,22 @@ def clean_offer_title(deal: Dict[str, Any]) -> str:
     category = (deal.get("category") or "").strip()
     desc = (deal.get("description") or "").strip()
     tags = [str(t).strip() for t in deal.get("tags", []) if str(t).strip()]
+    full_text = f"{title} {desc}"
 
-    # Step 1: Specific clean human-written pattern matches from description
+    # Specific OCR Junk Patterns
+    if re.search(r"Any\s+Spa\s+Therapy.*Flat\s+50%", full_text, flags=re.IGNORECASE):
+        return "Spa Therapy – Flat 50% Off"
+
+    if re.search(r"Flat\s+50%\s+Off.*on.*(?:Menu|Bill)", full_text, flags=re.IGNORECASE):
+        if "menu" in full_text.lower():
+            return "Flat 50% Off on Entire Menu"
+        return "Flat 50% Off on Total Bill"
+
+    if re.search(r"Executive\s+Veg\s+Lunch", full_text, flags=re.IGNORECASE):
+        return "Executive Veg Lunch"
+
+    # Human-written clean pattern matches from description
     patterns = [
-        (r"(Flat\s+50%\s+Off\s+on\s+(?:Entire|Total)\s+Menu)", "Flat 50% Off on Entire Menu"),
-        (r"(Flat\s+50%\s+Off\s+on\s+(?:Entire|Total)\s+Bill)", "Flat 50% Off on Total Bill"),
-        (r"(Any\s+Spa\s+Therapy\s+Flat\s+50%\s+Off)", "Spa Therapy – Flat 50% Off"),
-        (r"(Executive\s+Veg\s+Lunch)", "Executive Veg Lunch"),
-        (r"(Executive\s+Non[\-\s]*Veg\s+Lunch)", "Executive Non-Veg Lunch"),
         (r"(Patrani\s+Fish\s+Biryani\s+Combo\s*\+\s*\d+\s+Domestic\s+Pint\s+Beers)", "Patrani Fish Biryani Combo + 2 Domestic Pint Beers"),
         (r"(Buy\s+1[^\-\.\,\₹]+Get\s+1\s+FREE)", None),
         (r"((?:Unlimited|Dinner|Lunch|Breakfast)\s+Buffet(?:\s+for\s+\d+)?)", None),
@@ -62,23 +70,23 @@ def clean_offer_title(deal: Dict[str, Any]) -> str:
                 return replacement
             clean = m.group(1).strip()
             clean = re.sub(r"\s+", " ", clean)
-            clean = re.sub(r"\b(?:[Bv]uy|sppaaiyre|Bbiulliyn|Bsuhyo|Bvouuyc|vooutc)\b.*", "", clean, flags=re.IGNORECASE).strip()
+            clean = re.sub(r"\b(?:[Bv]uy|sppaaiyre|Bbiulliyn|Bsuhyo|Bvouuyc|vooutc|Athyi|B\s+U\s+Yp|Pmaays)\b.*", "", clean, flags=re.IGNORECASE).strip()
             if len(clean) >= 5:
                 return clean[:70].title()
 
-    # Step 2: Clean title directly if it does not contain heavy OCR junk or single-word junk
-    ocr_junk = r"\b(?:Offline|Anot|Wr|E|St|Cveis|Hpearya|Oitf|Pmaays|Smpiau|Tphree|HThoete|SHyodteelw|Soukb|Gsatalauxryant|Bbiulliyn|Bsuhyo|Midnight)\b"
+    # Clean title directly if it does not contain heavy OCR junk or single-word junk
+    ocr_junk = r"\b(?:Offline|Anot|Wr|E|St|Cveis|Hpearya|Oitf|Pmaays|Smpiau|Tphree|HThoete|SHyodteelw|Soukb|Gsatalauxryant|Bbiulliyn|Bsuhyo|Midnight|Athyi)\b"
     if not re.search(ocr_junk, title, flags=re.IGNORECASE):
         cleaned_t = title
         cleaned_t = re.sub(r"\b\d+\s+At\b.*", "", cleaned_t, flags=re.IGNORECASE)
         cleaned_t = re.sub(r"\b[A-Za-z]\s+[A-Za-z]\s+[A-Za-z]\b.*", "", cleaned_t)
         cleaned_t = re.sub(r"\s+", " ", cleaned_t).strip()
-        cleaned_t = re.sub(r"\b(?:[Bv]uy|sppaaiyre|Bbiulliyn|Bsuhyo|Bvouuyc|vooutc)\b.*", "", cleaned_t, flags=re.IGNORECASE).strip()
+        cleaned_t = re.sub(r"\b(?:[Bv]uy|sppaaiyre|Bbiulliyn|Bsuhyo|Bvouuyc|vooutc|Athyi|B\s+U\s+Yp|Pmaays)\b.*", "", cleaned_t, flags=re.IGNORECASE).strip()
 
         if len(cleaned_t) >= 6 and not cleaned_t.isdigit():
             return cleaned_t[:70]
 
-    # Step 3: Fallback using Tags & Category
+    # Fallback using Tags & Category
     if tags:
         tag_str = " ".join(tags[:2]).title()
         cat_str = category if category and category != "Unknown" else "Deal"
@@ -171,7 +179,7 @@ def matches_category(req_category: str, deal: Dict) -> bool:
 
 def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    AI Recommendation Engine with Category Normalization & Honest Price Display (Milestone 4.2).
+    AI Recommendation Engine with Category Normalization & Honest Price Display (Milestone 6.1).
     """
 
     req_category = intent.get("category")

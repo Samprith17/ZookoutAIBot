@@ -79,7 +79,14 @@ LOCATIONS = [
     "andheri", "bandra", "powai", "juhu", "thane", "borivali", "mumbai", "dadar", "worli", "lower parel", "malad", "vashi"
 ]
 
-GREETINGS = ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"]
+GREETINGS = ["start", "/start", "hi", "hello", "hey", "good morning", "good afternoon", "good evening"]
+RECENT_WORDS = ["recent", "recently viewed", "history", "/history"]
+PERSONALIZED_WORDS = ["recommend something", "what should i do today?", "suggest deals", "personalized recommendations", "recommended for me"]
+PROFILE_WORDS = ["my preferences", "my profile", "show my interests", "/profile"]
+RESET_PROFILE_WORDS = ["reset profile", "forget my preferences", "clear history", "/reset_profile"]
+FAVOURITES_WORDS = ["my favourites", "favorites", "saved deals", "favourites", "/favourites"]
+CLEAR_FAVOURITES_WORDS = ["clear favourites", "delete favourites", "/clear_favourites"]
+
 HELP_WORDS = ["help", "support", "what can you do", "how to use"]
 THANKS = ["thanks", "thank you", "thx", "cheers"]
 BYE = ["bye", "goodbye", "see you"]
@@ -99,8 +106,8 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    Advanced Multi-Constraint Natural Language Intent Parser.
-    Extracts category, city, area, location, budget, occasion, preferences, group size, time filter, and special keywords.
+    Advanced Multi-Constraint Natural Language Intent Parser (Milestone 6.1).
+    Extracts category, city, area, location, budget, occasion, preferences, group size, time filter, and command intent types.
     """
     text = (message or "").lower().strip()
 
@@ -126,6 +133,30 @@ def detect_intent(message: str) -> Dict[str, Any]:
 
     if text in GREETINGS:
         intent["type"] = "greeting"
+        return intent
+
+    if text in RECENT_WORDS:
+        intent["type"] = "recent"
+        return intent
+
+    if text in PERSONALIZED_WORDS:
+        intent["type"] = "personalized"
+        return intent
+
+    if text in PROFILE_WORDS:
+        intent["type"] = "profile"
+        return intent
+
+    if text in RESET_PROFILE_WORDS:
+        intent["type"] = "reset_profile"
+        return intent
+
+    if text in FAVOURITES_WORDS:
+        intent["type"] = "favourites"
+        return intent
+
+    if text in CLEAR_FAVOURITES_WORDS:
+        intent["type"] = "clear_favourites"
         return intent
 
     if text in HELP_WORDS:
@@ -193,7 +224,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
         elif "tomorrow" in extracted_times:
             intent["day"] = "tomorrow"
 
-    # 6. Group Size Extraction (e.g. "for 4", "for 2", or "couple")
+    # 6. Group Size Extraction
     gs_match = re.search(r"(?:for|group of)\s*(\d+)", text)
     if gs_match:
         intent["group_size"] = int(gs_match.group(1))
@@ -212,7 +243,6 @@ def detect_intent(message: str) -> Dict[str, Any]:
         if max_match:
             intent["max_price"] = int(max_match.group(1))
 
-    # Internal Debug Logging of Extracted Intent
     logger.info(f"[NLU Extracted Intent]: {intent}")
     print("[NLU Debug Intent]:", intent)
 

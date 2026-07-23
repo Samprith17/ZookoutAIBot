@@ -72,7 +72,6 @@ async def personalized_recommendations_handler(update: Update, context: ContextT
     p_intent = profile_manager.get_personalized_intent(user_id)
 
     if not p_intent:
-        # Fallback to general top recommendations
         p_intent = {
             "type": "search",
             "category": "restaurant",
@@ -136,7 +135,7 @@ async def recently_viewed_handler(update: Update, context: ContextTypes.DEFAULT_
     history = profile_manager.get_recently_viewed(user_id)
 
     if not history:
-        await update.message.reply_text("📜 You haven't viewed any deals recently!")
+        await update.message.reply_text("📜 You haven't viewed any deals recently! Try searching for deals first.")
         return
 
     await update.message.reply_text(f"📜 Recently Viewed Deals ({len(history)} items):\n")
@@ -236,53 +235,40 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
         message = update.message.text.strip()
-        msg_lower = message.lower()
-
-        # Milestone 6 Triggers
-        if msg_lower in ["recommend something", "what should i do today?", "suggest deals", "personalized recommendations", "recommended for me"]:
-            await personalized_recommendations_handler(update, context)
-            return
-
-        if msg_lower in ["recent", "recently viewed", "history"]:
-            await recently_viewed_handler(update, context)
-            return
-
-        if msg_lower in ["my preferences", "my profile", "show my interests"]:
-            await profile_preferences_handler(update, context)
-            return
-
-        if msg_lower in ["reset profile", "forget my preferences", "clear history"]:
-            await reset_profile_handler(update, context)
-            return
-
-        # Milestone 5 Favourites Triggers
-        if msg_lower in ["my favourites", "favorites", "saved deals", "favourites"]:
-            await favourites_handler(update, context)
-            return
-
-        if msg_lower in ["clear favourites", "delete favourites"]:
-            await clear_favourites_handler(update, context)
-            return
 
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Step 2: Merge with conversation memory
-        intent = memory_manager.update_context(user_id, raw_intent)
-
-        # Step 3: Automatically learn user profile from search intent
-        if intent["type"] == "search":
-            profile_manager.update_profile_from_intent(user_id, intent)
-
-        print("User ID:", user_id)
-        print("Message:", message)
-        print("Merged Intent:", intent)
-
-        if intent["type"] == "greeting":
+        # Milestone 6.1 Strict Intent Command Routing (Bypasses Search Pipeline)
+        if raw_intent["type"] == "greeting":
             await start(update, context)
             return
 
-        if intent["type"] == "help":
+        if raw_intent["type"] == "recent":
+            await recently_viewed_handler(update, context)
+            return
+
+        if raw_intent["type"] == "personalized":
+            await personalized_recommendations_handler(update, context)
+            return
+
+        if raw_intent["type"] == "profile":
+            await profile_preferences_handler(update, context)
+            return
+
+        if raw_intent["type"] == "reset_profile":
+            await reset_profile_handler(update, context)
+            return
+
+        if raw_intent["type"] == "favourites":
+            await favourites_handler(update, context)
+            return
+
+        if raw_intent["type"] == "clear_favourites":
+            await clear_favourites_handler(update, context)
+            return
+
+        if raw_intent["type"] == "help":
             await update.message.reply_text(
                 "🤖 I can help you find amazing deals & answer questions about Zookout.\n\n"
                 "Examples:\n"
@@ -293,24 +279,35 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        if intent["type"] == "thanks":
+        if raw_intent["type"] == "thanks":
             await update.message.reply_text("😊 You're welcome! Happy to help.")
             return
 
-        if intent["type"] == "bye":
+        if raw_intent["type"] == "bye":
             memory_manager.clear_context(user_id)
             await update.message.reply_text("👋 Goodbye! Have a wonderful day.")
             return
 
-        if intent["type"] == "out_of_scope":
+        if raw_intent["type"] == "out_of_scope":
             await update.message.reply_text(
                 "I'm designed to help with Zookout experiences, bookings, vouchers, and local deals. I can't reliably answer unrelated questions."
             )
             return
 
-        if intent["type"] == "faq":
-            await update.message.reply_text(intent["faq_answer"])
+        if raw_intent["type"] == "faq":
+            await update.message.reply_text(raw_intent["faq_answer"])
             return
+
+        # Step 2: Merge search intent with conversation memory
+        intent = memory_manager.update_context(user_id, raw_intent)
+
+        # Step 3: Automatically learn user profile from search intent
+        if intent["type"] == "search":
+            profile_manager.update_profile_from_intent(user_id, intent)
+
+        print("User ID:", user_id)
+        print("Message:", message)
+        print("Merged Intent:", intent)
 
         # Step 4: Search deals using Recommendation Engine
         results = search_deals(intent)
@@ -437,7 +434,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with AI Personalization Engine...")
+    print("[OK] Zookout AI Bot is running with Strict Intent Command Routing...")
     app.run_polling()
 
 
