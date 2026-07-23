@@ -87,7 +87,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(intent["faq_answer"])
             return
 
-        # Step 3: Search deals using AI Recommendation & Reasoning Engine
+        # Step 3: Search deals using Clean Data & Honest Reasoning Engine
         results = search_deals(intent)
 
         if not results:
@@ -101,18 +101,14 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if fallback_results:
                 reply = "I couldn't find an exact match for your budget/location criteria.\n\nHere are the closest matching options:\n\n"
                 for deal in fallback_results[:5]:
-                    title = deal.get('title', 'No Title')
-                    if len(title) > 80:
-                        title = title[:77] + "..."
-
                     reply += (
                         f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
                         f"📂 Category: {deal.get('category', 'N/A')}\n"
-                        f"📝 {title}\n"
+                        f"📝 Offer: {deal.get('clean_title')}\n"
                         f"💰 Price: ₹{deal.get('price', 'N/A')}\n"
                         f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
-                        f"📍 Location: {deal.get('location', 'N/A')}\n"
-                        f"🔗 {deal.get('website', '')}\n"
+                        f"📍 Location: {deal.get('display_location')}\n"
+                        f"🔗 Link: {deal.get('website', '')}\n"
                         "────────────────────────\n\n"
                     )
                 await update.message.reply_text(reply, disable_web_page_preview=True)
@@ -127,13 +123,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             return
 
-        # Milestone 3 Response Formatting: ⭐ Best Match + Reasons + 🎯 Other Recommendations
+        # Milestone 4 Format: ⭐ Best Match + Honest Reasons + 🎯 Other Recommendations
         best_match = results[0]
         other_matches = results[1:5]
-
-        best_title = best_match.get('title', 'No Title')
-        if len(best_title) > 80:
-            best_title = best_title[:77] + "..."
 
         reasons_text = ""
         for reason in best_match.get("reasons", []):
@@ -143,11 +135,11 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⭐ Best Match\n\n"
             f"🏷️ Brand: {best_match.get('brand', 'N/A')}\n"
             f"📂 Category: {best_match.get('category', 'N/A')}\n"
-            f"📝 {best_title}\n"
+            f"📝 Offer: {best_match.get('clean_title')}\n"
             f"💰 Price: ₹{best_match.get('price', 'N/A')}\n"
             f"🎁 Discount: {best_match.get('discount_percent', 0)}%\n"
-            f"📍 Location: {best_match.get('location', 'N/A')}\n"
-            f"🔗 {best_match.get('website', '')}\n\n"
+            f"📍 Location: {best_match.get('display_location')}\n"
+            f"🔗 Link: {best_match.get('website', '')}\n\n"
             "Why this recommendation?\n"
             f"{reasons_text}\n"
         )
@@ -156,18 +148,14 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply += "━━━━━━━━━━━━━━━━━━\n\n🎯 Other Top Recommendations\n\n"
 
             for deal in other_matches:
-                o_title = deal.get('title', 'No Title')
-                if len(o_title) > 80:
-                    o_title = o_title[:77] + "..."
-
                 reply += (
                     f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
                     f"📂 Category: {deal.get('category', 'N/A')}\n"
-                    f"📝 {o_title}\n"
+                    f"📝 Offer: {deal.get('clean_title')}\n"
                     f"💰 Price: ₹{deal.get('price', 'N/A')}\n"
                     f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
-                    f"📍 Location: {deal.get('location', 'N/A')}\n"
-                    f"🔗 {deal.get('website', '')}\n"
+                    f"📍 Location: {deal.get('display_location')}\n"
+                    f"🔗 Link: {deal.get('website', '')}\n"
                     "────────────────────────\n\n"
                 )
 

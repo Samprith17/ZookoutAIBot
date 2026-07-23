@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import List, Dict, Any
 from rapidfuzz import fuzz
@@ -16,6 +17,47 @@ def load_deals() -> List[Dict]:
 
 
 DEALS = load_deals()
+
+
+def clean_offer_title(deal: Dict[str, Any]) -> str:
+    """
+    Data Cleaning Engine (Milestone 4):
+    Removes OCR junk, broken symbols, repeated prefixes, and meaningless text.
+    Constructs clean, professional titles.
+    """
+    title = (deal.get("title") or "").strip()
+    brand = (deal.get("brand") or "").strip()
+    category = (deal.get("category") or "").strip()
+    desc = (deal.get("description") or "").strip()
+
+    junk_patterns = [
+        r"^\d+\s*$", r"^\d+\s*At$", r"^Restaurant\s+Offline.*", r"^Spa\s+Offline.*",
+        r"^Salon\s+Offline.*", r"^Cafe\s+Offline.*", r"^Hotel\s+Offline.*",
+        r"^At\s+Restaurant$", r"^At\s+Spa$", r"^At\s+Salon$", r"^At\s+Cafe$",
+        r"^\d+\s+At\s+.*"
+    ]
+    is_junk = any(re.match(p, title, flags=re.IGNORECASE) for p in junk_patterns)
+
+    if is_junk or len(title) < 4:
+        if desc:
+            clean_desc = re.sub(r"\b(?:Offline|At|Anot|Wr|E|St|Cveis|Hpearya|Oitf|Pmaays|Smpiau|Tphree)\b", "", desc, flags=re.IGNORECASE)
+            clean_desc = re.sub(r"\s+", " ", clean_desc).strip()
+            match = re.search(r"([A-Z0-9][A-Za-z0-9\s\+\-\%\₹\$\,\.]{10,60})", clean_desc)
+            if match:
+                return match.group(1).strip()
+        cat_str = category if category and category != "Unknown" else "Special Experience"
+        return f"{cat_str} Offer at {brand or 'Zookout Merchant'}"
+
+    cleaned = title
+    cleaned = re.sub(r"\b(?:Offline|At|Anot|Wr|E|St|Cveis|Hpearya|Oitf|Pmaays|Smpiau|Tphree)\b", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b[A-Za-z]\s+[A-Za-z]\s+[A-Za-z]\b", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    if len(cleaned) < 5 or cleaned.isdigit():
+        cat_str = category if category and category != "Unknown" else "Special Experience"
+        return f"{cat_str} Offer at {brand or 'Zookout Merchant'}"
+
+    return cleaned[:80].strip()
 
 
 def matches_category(req_category: str, deal: Dict) -> bool:
@@ -63,14 +105,7 @@ def matches_category(req_category: str, deal: Dict) -> bool:
 
 def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    AI Recommendation & Reasoning Engine (Milestone 3):
-    1. Category Match (30 pts)
-    2. Location Match (25 pts)
-    3. Budget Match (20 pts)
-    4. Occasion Match (10 pts)
-    5. Preference Match (10 pts)
-    6. Discount Value (5 pts)
-    Generates structured reasoning explanations for recommendations.
+    AI Recommendation Engine with Honest Reasoning & Clean Location Display (Milestone 4).
     """
 
     req_category = intent.get("category")
@@ -85,7 +120,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     candidate_deals = []
 
-    # Step 1: Filter deals strictly by Category & Price Limits
+    # Step 1: Category & Price Bounds Filtering
     for deal in DEALS:
         if req_category and not matches_category(req_category, deal):
             continue
@@ -106,7 +141,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     if not candidate_deals:
         return []
 
-    # Step 2: Multi-Factor Scoring & Reasoning Breakdown
+    # Step 2: Scoring & Honest Reasoning Generation
     scored_results = []
     for deal in candidate_deals:
         score = 0.0
@@ -115,7 +150,8 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         title = deal.get("title", "")
         brand = deal.get("brand", "")
         desc = deal.get("description", "")
-        location_str = (deal.get("location") or "").lower()
+        location_raw = (deal.get("location") or "").strip()
+        location_str = location_raw.lower()
         tags = [str(t).lower() for t in deal.get("tags", [])]
         full_text = f"{title} {desc} {' '.join(tags)}".lower()
 
@@ -135,16 +171,19 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
                 score += 20
                 reasons.append(f"Relevant deal in {deal.get('category', 'Zookout')}")
 
-        # 2. Location Match (25 pts)
+        # 2. Location & Area Match (25 pts)
         target_loc = req_area or req_location or req_city
         if target_loc:
             t_loc = target_loc.lower()
-            if t_loc in location_str:
+            if t_loc in location_str and t_loc != "mumbai":
                 score += 25
                 reasons.append(f"Located in your requested area ({target_loc.title()})")
             elif "mumbai" in location_str or t_loc == "mumbai":
                 score += 15
-                reasons.append(f"Available in {deal.get('location', 'Mumbai')}")
+                if req_area and req_area.lower() not in location_str:
+                    reasons.append("Exact area information unavailable; listed under Mumbai region")
+                else:
+                    reasons.append(f"Available in {location_raw or 'Mumbai'}")
             else:
                 score += 5
 
@@ -160,17 +199,17 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
                 score += 20
                 reasons.append(f"Within your price range (₹{int(price)})")
 
-        # 4. Occasion Match (10 pts)
+        # 4. Honest Occasion Match (10 pts)
         if req_occasion:
-            if req_occasion.lower() in full_text:
+            occ_kws = ["romantic", "couple", "candle", "date", "birthday", "bday", "family"]
+            if any(k in full_text for k in occ_kws if k in req_occasion.lower() or req_occasion.lower() in k):
                 score += 10
-                reasons.append(f"Ideal choice for a {req_occasion.title()} experience")
+                reasons.append(f"Suitable for a {req_occasion.title()} experience")
+            else:
+                reasons.append(f"No specific ambience details available; fits {deal.get('category', 'Zookout')} category")
 
         # 5. Preference Match (10 pts)
-        matched_prefs = []
-        for pref in req_preferences:
-            if pref.lower() in full_text:
-                matched_prefs.append(pref.title())
+        matched_prefs = [pref.title() for pref in req_preferences if pref.lower() in full_text]
         if matched_prefs:
             score += 10
             reasons.append(f"Offers requested features ({', '.join(matched_prefs)})")
@@ -178,18 +217,28 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         # 6. Discount & Value Match (5 pts)
         if discount and discount > 0:
             score += min(5.0, discount * 0.1)
-            reasons.append(f"Great savings offer ({discount}% OFF)")
+            reasons.append(f"High discount value ({discount}% OFF)")
 
         # Rapidfuzz Title Query Bonus
         if user_query:
             rf_score = fuzz.partial_ratio(user_query.lower(), title.lower())
             score += (rf_score * 0.1)
 
-        # Fallback default reason if reasons list is short
         if len(reasons) < 2:
-            reasons.append("Highly rated experience on Zookout")
+            reasons.append("Highly rated deal on Zookout")
+
+        # Format clean title and clean location string
+        cleaned_title = clean_offer_title(deal)
+
+        display_location = location_raw
+        if location_raw.lower() not in ["mumbai", ""] and "mumbai" not in location_raw.lower():
+            display_location = f"{location_raw}, Mumbai"
+        elif not location_raw:
+            display_location = "Mumbai"
 
         scored_deal = dict(deal)
+        scored_deal["clean_title"] = cleaned_title
+        scored_deal["display_location"] = display_location
         scored_deal["score"] = round(score, 2)
         scored_deal["reasons"] = reasons
         scored_results.append(scored_deal)
