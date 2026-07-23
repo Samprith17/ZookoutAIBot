@@ -7,11 +7,9 @@ from telegram.ext import (
     filters,
 )
 
+from config import BOT_TOKEN
 from v2.search.search_engine import search_deals
 from v2.ai.intent import detect_intent
-
-# Replace with your NEW BotFather token
-BOT_TOKEN = "8911959946:AAEsf-9H31eAYbSMAfvlrOF0x9uTQMNGc-c"
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -36,7 +34,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Greeting
     if intent["type"] == "greeting":
-        print("✅ Greeting detected")
+        print("[OK] Greeting detected")
         await update.message.reply_text(
             "👋 Hello! Welcome to Zookout AI.\n\n"
             "How can I help you today?"
@@ -99,6 +97,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+    if not BOT_TOKEN:
+        raise SystemExit("[ERROR] BOT_TOKEN is missing. Please set BOT_TOKEN in your environment or .env file.")
+
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -106,7 +107,7 @@ def main():
         MessageHandler(filters.TEXT & ~filters.COMMAND, search)
     )
 
-    print("✅ Zookout AI Bot is running...")
+    print("[OK] Zookout AI Bot is running...")
     app.run_polling()
 
 
