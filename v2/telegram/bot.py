@@ -13,12 +13,14 @@ from config import BOT_TOKEN
 from v2.search.search_engine import search_deals
 from v2.ai.intent import detect_intent
 from v2.ai.memory import memory_manager
+from v2.ai.profile import profile_manager
 from v2.telegram.handlers import (
     USER_SEARCH_CACHE,
     get_favourites,
     build_deal_keyboard,
     build_pagination_keyboard,
     build_confirm_clear_keyboard,
+    build_confirm_reset_profile_keyboard,
     handle_callback_query,
 )
 
@@ -29,9 +31,24 @@ logger = logging.getLogger(__name__)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
     memory_manager.clear_context(user_id)
+    first_name = update.effective_user.first_name if update.effective_user else "there"
+
+    profile = profile_manager.get_profile(user_id)
+    if profile["search_count"] > 0 and profile["categories"]:
+        top_cat = profile["categories"].most_common(1)[0][0]
+        avg_b = int(sum(profile["budgets"]) / len(profile["budgets"])) if profile["budgets"] else None
+        b_str = f" under ₹{avg_b}" if avg_b else ""
+
+        await update.message.reply_text(
+            f"👋 Welcome back {first_name}!\n\n"
+            f"You usually look for {top_cat}{b_str}.\n"
+            "Here are your personalized deal recommendations for today:"
+        )
+        await personalized_recommendations_handler(update, context)
+        return
 
     await update.message.reply_text(
-        "👋 Welcome to Zookout AI!\n\n"
+        f"👋 Welcome to Zookout AI, {first_name}!\n\n"
         "I can help you discover amazing local deals and experiences.\n\n"
         "Examples:\n"
         "🍽 Restaurant in Mumbai\n"
@@ -42,8 +59,134 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🏨 Hotel in Mumbai\n"
         "🎟 Adventure activities\n\n"
         "Commands:\n"
+        "🌟 Recommend something\n"
         "❤️ My Favourites\n"
-        "🗑️ Clear Favourites"
+        "📜 Recently viewed\n"
+        "👤 My preferences\n"
+        "🗑️ Reset profile"
+    )
+
+
+async def personalized_recommendations_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    p_intent = profile_manager.get_personalized_intent(user_id)
+
+    if not p_intent:
+        # Fallback to general top recommendations
+        p_intent = {
+            "type": "search",
+            "category": "restaurant",
+            "city": "Mumbai",
+            "location": "Mumbai",
+            "query": "Recommended Deals"
+        }
+
+    results = search_deals(p_intent)
+    if not results:
+        await update.message.reply_text("I couldn't find personalized deals right now. Try searching for a specific venue or category!")
+        return
+
+    USER_SEARCH_CACHE[user_id] = results
+    best_match = results[0]
+
+    for d in results[:4]:
+        profile_manager.add_recently_viewed(user_id, d)
+
+    p_reasons = profile_manager.get_personalization_reasons(user_id, best_match)
+    reasons_text = ""
+    for r in p_reasons:
+        reasons_text += f"• {r}\n"
+
+    best_reply = (
+        "🌟 Personalized Best Match\n\n"
+        f"🏷️ Brand: {best_match.get('brand', 'N/A')}\n"
+        f"📂 Category: {best_match.get('display_category', 'N/A')}\n"
+        f"📝 Offer: {best_match.get('clean_title')}\n"
+        f"💰 Price: {best_match.get('formatted_price', 'Price not available')}\n"
+        f"🎁 Discount: {best_match.get('discount_percent', 0)}%\n"
+        f"📍 Location: {best_match.get('display_location')}\n\n"
+        "Why this recommendation?\n"
+        f"{reasons_text}"
+    )
+    best_keyboard = build_deal_keyboard(best_match)
+    await update.message.reply_text(best_reply, reply_markup=best_keyboard, disable_web_page_preview=True)
+
+    other_matches = results[1:4]
+    if other_matches:
+        await update.message.reply_text("━━━━━━━━━━━━━━━━━━\n\n🎯 Other Personalized Recommendations:")
+        for deal in other_matches:
+            reply = (
+                f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
+                f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+                f"📝 Offer: {deal.get('clean_title')}\n"
+                f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
+                f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+                f"📍 Location: {deal.get('display_location')}\n"
+            )
+            keyboard = build_deal_keyboard(deal)
+            await update.message.reply_text(reply, reply_markup=keyboard, disable_web_page_preview=True)
+
+    if len(results) > 4:
+        p_keyboard = build_pagination_keyboard(offset=4)
+        await update.message.reply_text(f"Showing deals 1-{min(4, len(results))} of {len(results)}. Click below for more!", reply_markup=p_keyboard)
+
+
+async def recently_viewed_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    history = profile_manager.get_recently_viewed(user_id)
+
+    if not history:
+        await update.message.reply_text("📜 You haven't viewed any deals recently!")
+        return
+
+    await update.message.reply_text(f"📜 Recently Viewed Deals ({len(history)} items):\n")
+    for deal in history:
+        title = deal.get("clean_title", deal.get("title", ""))
+        reply = (
+            f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
+            f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+            f"📝 Offer: {title}\n"
+            f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
+            f"📍 Location: {deal.get('display_location')}\n"
+        )
+        keyboard = build_deal_keyboard(deal)
+        await update.message.reply_text(reply, reply_markup=keyboard, disable_web_page_preview=True)
+
+
+async def profile_preferences_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    profile = profile_manager.get_profile(user_id)
+
+    if profile["search_count"] == 0 and not profile["categories"]:
+        await update.message.reply_text(
+            "👤 Your preference profile is currently empty!\n\n"
+            "Search for deals or save favourites, and I will automatically learn your preferences over time."
+        )
+        return
+
+    cats_str = ", ".join([f"{k} ({v})" for k, v in profile["categories"].most_common(3)]) or "None"
+    locs_str = ", ".join([f"{k} ({v})" for k, v in profile["locations"].most_common(3)]) or "None"
+    merch_str = ", ".join([f"{k} ({v})" for k, v in profile["merchants"].most_common(3)]) or "None"
+    avg_b = int(sum(profile["budgets"]) / len(profile["budgets"])) if profile["budgets"] else None
+    budget_str = f"Under ₹{avg_b}" if avg_b else "Not specified"
+
+    reply = (
+        "👤 Your Personal Preference Profile:\n\n"
+        f"📂 Favourite Categories: {cats_str}\n"
+        f"💰 Typical Budget: {budget_str}\n"
+        f"📍 Preferred Locations: {locs_str}\n"
+        f"🏷️ Favourite Merchants: {merch_str}\n"
+        f"📊 Total Searches Recorded: {profile['search_count']}"
+    )
+    await update.message.reply_text(reply)
+
+
+async def reset_profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    confirm_keyboard = build_confirm_reset_profile_keyboard()
+    await update.message.reply_text(
+        "⚠️ Are you sure you want to reset your preference profile and clear your search history?",
+        reply_markup=confirm_keyboard,
     )
 
 
@@ -95,12 +238,28 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = update.message.text.strip()
         msg_lower = message.lower()
 
-        # Feature 4: Check for Favourites intent
+        # Milestone 6 Triggers
+        if msg_lower in ["recommend something", "what should i do today?", "suggest deals", "personalized recommendations", "recommended for me"]:
+            await personalized_recommendations_handler(update, context)
+            return
+
+        if msg_lower in ["recent", "recently viewed", "history"]:
+            await recently_viewed_handler(update, context)
+            return
+
+        if msg_lower in ["my preferences", "my profile", "show my interests"]:
+            await profile_preferences_handler(update, context)
+            return
+
+        if msg_lower in ["reset profile", "forget my preferences", "clear history"]:
+            await reset_profile_handler(update, context)
+            return
+
+        # Milestone 5 Favourites Triggers
         if msg_lower in ["my favourites", "favorites", "saved deals", "favourites"]:
             await favourites_handler(update, context)
             return
 
-        # Feature 5: Check for Clear Favourites intent
         if msg_lower in ["clear favourites", "delete favourites"]:
             await clear_favourites_handler(update, context)
             return
@@ -111,15 +270,16 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 2: Merge with conversation memory
         intent = memory_manager.update_context(user_id, raw_intent)
 
+        # Step 3: Automatically learn user profile from search intent
+        if intent["type"] == "search":
+            profile_manager.update_profile_from_intent(user_id, intent)
+
         print("User ID:", user_id)
         print("Message:", message)
         print("Merged Intent:", intent)
 
         if intent["type"] == "greeting":
-            await update.message.reply_text(
-                "👋 Hello! Welcome to Zookout AI.\n\n"
-                "How can I help you find deals today?"
-            )
+            await start(update, context)
             return
 
         if intent["type"] == "help":
@@ -152,7 +312,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(intent["faq_answer"])
             return
 
-        # Step 3: Search deals using Recommendation Engine
+        # Step 4: Search deals using Recommendation Engine
         results = search_deals(intent)
 
         if not results:
@@ -168,6 +328,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("I couldn't find an exact match for your budget/location criteria.\n\nHere are the closest matching options:\n")
 
                 for deal in fallback_results[:4]:
+                    profile_manager.add_recently_viewed(user_id, deal)
                     reply = (
                         f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
                         f"📂 Category: {deal.get('display_category', 'N/A')}\n"
@@ -196,9 +357,13 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Cache active search results for pagination
         USER_SEARCH_CACHE[user_id] = results
 
-        # Milestone 5 Interactive UI: Best Match + Inline Keyboards + Pagination
+        # Interactive UI: Best Match + Inline Keyboards + Pagination
         best_match = results[0]
         other_matches = results[1:4]
+
+        # Add to recently viewed history
+        for d in results[:4]:
+            profile_manager.add_recently_viewed(user_id, d)
 
         reasons_text = ""
         for reason in best_match.get("reasons", []):
@@ -265,11 +430,14 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("favourites", favourites_handler))
     app.add_handler(CommandHandler("clear_favourites", clear_favourites_handler))
+    app.add_handler(CommandHandler("history", recently_viewed_handler))
+    app.add_handler(CommandHandler("profile", profile_preferences_handler))
+    app.add_handler(CommandHandler("reset_profile", reset_profile_handler))
     app.add_handler(CallbackQueryHandler(handle_callback_query))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Interactive Inline Keyboards...")
+    print("[OK] Zookout AI Bot is running with AI Personalization Engine...")
     app.run_polling()
 
 

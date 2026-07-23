@@ -3,6 +3,7 @@ from typing import Dict, List, Any
 import urllib.parse
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
+from v2.ai.profile import profile_manager
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ USER_SEARCH_CACHE: Dict[int, List[Dict[str, Any]]] = {}
 
 
 def save_favourite(user_id: int, deal: Dict[str, Any]) -> bool:
-    """Save deal to user favourites. Returns True if saved, False if duplicate."""
+    """Save deal to user favourites & update profile."""
     if user_id not in USER_FAVOURITES:
         USER_FAVOURITES[user_id] = {}
 
@@ -23,6 +24,7 @@ def save_favourite(user_id: int, deal: Dict[str, Any]) -> bool:
         return False  # Already saved
 
     USER_FAVOURITES[user_id][deal_id] = deal
+    profile_manager.update_profile_from_favourite(user_id, deal)
     return True
 
 
@@ -97,6 +99,17 @@ def build_confirm_clear_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(buttons)
 
 
+def build_confirm_reset_profile_keyboard() -> InlineKeyboardMarkup:
+    """Builds confirmation buttons for resetting user profile."""
+    buttons = [
+        [
+            InlineKeyboardButton("⚠️ Yes, Reset Profile", callback_data="profile_reset_confirm"),
+            InlineKeyboardButton("❌ Cancel", callback_data="profile_reset_cancel"),
+        ]
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Callback Query Handler for Inline Buttons."""
     query = update.callback_query
@@ -109,7 +122,6 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     # 1. Save Favourite
     if data.startswith("fav_save:"):
         deal_id = int(data.split(":")[1])
-        # Find deal from cache or favourites
         cached_deals = USER_SEARCH_CACHE.get(user_id, [])
         target_deal = next((d for d in cached_deals if d.get("id") == deal_id), None)
 
@@ -150,6 +162,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         next_offset = offset + 4
 
         for deal in next_batch:
+            profile_manager.add_recently_viewed(user_id, deal)
             title = deal.get("clean_title", deal.get("title", ""))
             reply = (
                 f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
@@ -184,4 +197,18 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer(text="Cancelled.", show_alert=False)
         if query.message:
             await query.message.edit_text("Action cancelled. Your favourites are safe.")
+        return
+
+    # 5. Profile Reset Confirmation
+    if data == "profile_reset_confirm":
+        profile_manager.reset_profile(user_id)
+        await query.answer(text="🗑️ Profile reset!", show_alert=False)
+        if query.message:
+            await query.message.edit_text("🗑️ Your preferences and search history have been cleared.")
+        return
+
+    if data == "profile_reset_cancel":
+        await query.answer(text="Cancelled.", show_alert=False)
+        if query.message:
+            await query.message.edit_text("Action cancelled. Your profile preferences are intact.")
         return
