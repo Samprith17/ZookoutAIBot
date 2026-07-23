@@ -19,8 +19,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Examples:\n"
         "🍽 Restaurant in Mumbai\n"
         "💆 Spa under ₹1000\n"
-        "☕ Cafe in Bandra\n"
-        "🏨 Hotel deals"
+        "💇 Salon in Andheri\n"
+        "☕ Cafe below ₹500\n"
+        "🍺 Pub in Bandra\n"
+        "🏨 Hotel in Mumbai\n"
+        "🎟 Adventure activities"
     )
 
 
@@ -48,7 +51,8 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Examples:\n"
             "🍽 Restaurant in Mumbai\n"
             "💆 Spa under ₹1000\n"
-            "☕ Cafe in Bandra"
+            "💇 Salon in Andheri\n"
+            "🍺 Pub in Bandra"
         )
         return
 
@@ -78,18 +82,41 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(intent["faq_answer"])
         return
 
-    # Search deals
+    # Primary Deal Search
     results = search_deals(intent)
 
     if not results:
-        await update.message.reply_text(
-            "I couldn't find an exact match.\n\n"
-            "Try searching for:\n"
-            "• Restaurant in Mumbai\n"
-            "• Spa under ₹1000\n"
-            "• Cafe in Bandra\n\n"
-            "Would you like to see similar options?"
-        )
+        # Fallback: Search SAME category without budget/location constraints
+        fallback_intent = dict(intent)
+        fallback_intent["max_price"] = None
+        fallback_intent["min_price"] = None
+        fallback_intent["location"] = None
+
+        fallback_results = search_deals(fallback_intent)
+
+        if fallback_results:
+            reply = "I couldn't find an exact match.\n\nHere are the closest matching options:\n\n"
+            for deal in fallback_results[:5]:
+                reply += (
+                    f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
+                    f"📂 Category: {deal.get('category', 'N/A')}\n"
+                    f"📝 {deal.get('title', 'No Title')}\n"
+                    f"💰 Price: ₹{deal.get('price', 'N/A')}\n"
+                    f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+                    f"📍 Location: {deal.get('location', 'N/A')}\n"
+                    f"🔗 {deal.get('website', '')}\n"
+                    "────────────────────────\n\n"
+                )
+            await update.message.reply_text(reply)
+        else:
+            await update.message.reply_text(
+                "I couldn't find an exact match.\n\n"
+                "Try searching for:\n"
+                "• Restaurant in Mumbai\n"
+                "• Spa under ₹1000\n"
+                "• Salon in Andheri\n"
+                "• Cafe below ₹500"
+            )
         return
 
     reply = "🎯 Top Matching Deals\n\n"
