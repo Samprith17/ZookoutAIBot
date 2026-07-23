@@ -87,7 +87,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(intent["faq_answer"])
             return
 
-        # Step 3: Search deals using Clean Data & Honest Reasoning Engine
+        # Step 3: Search deals using Clean Data & Category Normalization Engine
         results = search_deals(intent)
 
         if not results:
@@ -103,9 +103,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for deal in fallback_results[:5]:
                     reply += (
                         f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
-                        f"📂 Category: {deal.get('category', 'N/A')}\n"
+                        f"📂 Category: {deal.get('display_category', 'N/A')}\n"
                         f"📝 Offer: {deal.get('clean_title')}\n"
-                        f"💰 Price: ₹{deal.get('price', 'N/A')}\n"
+                        f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
                         f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
                         f"📍 Location: {deal.get('display_location')}\n"
                         f"🔗 Link: {deal.get('website', '')}\n"
@@ -123,7 +123,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             return
 
-        # Milestone 4 Format: ⭐ Best Match + Honest Reasons + 🎯 Other Recommendations
+        # Milestone 4.2 Format: ⭐ Best Match + Category Normalization + Honest Pricing
         best_match = results[0]
         other_matches = results[1:5]
 
@@ -134,9 +134,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = (
             "⭐ Best Match\n\n"
             f"🏷️ Brand: {best_match.get('brand', 'N/A')}\n"
-            f"📂 Category: {best_match.get('category', 'N/A')}\n"
+            f"📂 Category: {best_match.get('display_category', 'N/A')}\n"
             f"📝 Offer: {best_match.get('clean_title')}\n"
-            f"💰 Price: ₹{best_match.get('price', 'N/A')}\n"
+            f"💰 Price: {best_match.get('formatted_price', 'Price not available')}\n"
             f"🎁 Discount: {best_match.get('discount_percent', 0)}%\n"
             f"📍 Location: {best_match.get('display_location')}\n"
             f"🔗 Link: {best_match.get('website', '')}\n\n"
@@ -150,9 +150,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for deal in other_matches:
                 reply += (
                     f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
-                    f"📂 Category: {deal.get('category', 'N/A')}\n"
+                    f"📂 Category: {deal.get('display_category', 'N/A')}\n"
                     f"📝 Offer: {deal.get('clean_title')}\n"
-                    f"💰 Price: ₹{deal.get('price', 'N/A')}\n"
+                    f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
                     f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
                     f"📍 Location: {deal.get('display_location')}\n"
                     f"🔗 Link: {deal.get('website', '')}\n"

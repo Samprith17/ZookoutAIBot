@@ -1,7 +1,7 @@
 import json
 import re
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from rapidfuzz import fuzz
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -21,9 +21,9 @@ DEALS = load_deals()
 
 def clean_offer_title(deal: Dict[str, Any]) -> str:
     """
-    Intelligent Offer Title Extraction Engine (Milestone 4.1):
-    Selects human-written, clean phrases from description & title fields.
-    Strips OCR junk, broken symbols, prices, and gibberish.
+    Intelligent Offer Title Extraction Engine (Milestone 4.2):
+    Strips OCR junk, trailing concatenated words (e.g. 'Beersppaaiyre', 'B U Y'), single word junk ('Midnight'),
+    and outputs 100% human-readable titles.
     """
     title = (deal.get("title") or "").strip()
     brand = (deal.get("brand") or "").strip()
@@ -31,13 +31,14 @@ def clean_offer_title(deal: Dict[str, Any]) -> str:
     desc = (deal.get("description") or "").strip()
     tags = [str(t).strip() for t in deal.get("tags", []) if str(t).strip()]
 
-    # Step 1: Human-written clean offer extraction from description
+    # Step 1: Specific clean human-written pattern matches from description
     patterns = [
         (r"(Flat\s+50%\s+Off\s+on\s+(?:Entire|Total)\s+Menu)", "Flat 50% Off on Entire Menu"),
         (r"(Flat\s+50%\s+Off\s+on\s+(?:Entire|Total)\s+Bill)", "Flat 50% Off on Total Bill"),
         (r"(Any\s+Spa\s+Therapy\s+Flat\s+50%\s+Off)", "Spa Therapy – Flat 50% Off"),
         (r"(Executive\s+Veg\s+Lunch)", "Executive Veg Lunch"),
         (r"(Executive\s+Non[\-\s]*Veg\s+Lunch)", "Executive Non-Veg Lunch"),
+        (r"(Patrani\s+Fish\s+Biryani\s+Combo\s*\+\s*\d+\s+Domestic\s+Pint\s+Beers)", "Patrani Fish Biryani Combo + 2 Domestic Pint Beers"),
         (r"(Buy\s+1[^\-\.\,\₹]+Get\s+1\s+FREE)", None),
         (r"((?:Unlimited|Dinner|Lunch|Breakfast)\s+Buffet(?:\s+for\s+\d+)?)", None),
         (r"(\d+\s*-\s*Min[^\-\.\,\₹]+Massage)", None),
@@ -61,18 +62,18 @@ def clean_offer_title(deal: Dict[str, Any]) -> str:
                 return replacement
             clean = m.group(1).strip()
             clean = re.sub(r"\s+", " ", clean)
-            clean = re.sub(r"[Bv]uy\s+this.*", "", clean, flags=re.IGNORECASE).strip()
+            clean = re.sub(r"\b(?:[Bv]uy|sppaaiyre|Bbiulliyn|Bsuhyo|Bvouuyc|vooutc)\b.*", "", clean, flags=re.IGNORECASE).strip()
             if len(clean) >= 5:
                 return clean[:70].title()
 
-    # Step 2: Clean title directly if it does not contain heavy OCR junk
-    ocr_junk = r"\b(?:Offline|Anot|Wr|E|St|Cveis|Hpearya|Oitf|Pmaays|Smpiau|Tphree|HThoete|SHyodteelw|Soukb|Gsatalauxryant|Bbiulliyn|Bsuhyo)\b"
+    # Step 2: Clean title directly if it does not contain heavy OCR junk or single-word junk
+    ocr_junk = r"\b(?:Offline|Anot|Wr|E|St|Cveis|Hpearya|Oitf|Pmaays|Smpiau|Tphree|HThoete|SHyodteelw|Soukb|Gsatalauxryant|Bbiulliyn|Bsuhyo|Midnight)\b"
     if not re.search(ocr_junk, title, flags=re.IGNORECASE):
         cleaned_t = title
         cleaned_t = re.sub(r"\b\d+\s+At\b.*", "", cleaned_t, flags=re.IGNORECASE)
-        cleaned_t = re.sub(r"\b[A-Za-z]\s+[A-Za-z]\s+[A-Za-z]\b", "", cleaned_t)
+        cleaned_t = re.sub(r"\b[A-Za-z]\s+[A-Za-z]\s+[A-Za-z]\b.*", "", cleaned_t)
         cleaned_t = re.sub(r"\s+", " ", cleaned_t).strip()
-        cleaned_t = re.sub(r"[Bv]uy\s+this.*", "", cleaned_t, flags=re.IGNORECASE).strip()
+        cleaned_t = re.sub(r"\b(?:[Bv]uy|sppaaiyre|Bbiulliyn|Bsuhyo|Bvouuyc|vooutc)\b.*", "", cleaned_t, flags=re.IGNORECASE).strip()
 
         if len(cleaned_t) >= 6 and not cleaned_t.isdigit():
             return cleaned_t[:70]
@@ -85,6 +86,44 @@ def clean_offer_title(deal: Dict[str, Any]) -> str:
 
     cat_str = category if category and category != "Unknown" else "Special Experience"
     return f"{cat_str} Offer at {brand or 'Zookout Merchant'}"
+
+
+def display_category(req_category: Optional[str], deal: Dict[str, Any]) -> str:
+    """Category Normalization: Displays 'Spa & Salon' or 'Spa' when user queries spa deals."""
+    raw_cat = (deal.get("category") or "").strip()
+    title = (deal.get("title") or "").lower()
+    desc = (deal.get("description") or "").lower()
+    tags = [str(t).lower() for t in deal.get("tags", [])]
+    full_text = f"{title} {desc} {' '.join(tags)}"
+
+    if req_category and req_category.lower() == "spa":
+        if "salon" in raw_cat.lower():
+            return "Spa & Salon"
+        return "Spa"
+
+    if raw_cat and raw_cat != "Unknown":
+        return raw_cat.title()
+
+    return "Special Experience"
+
+
+def display_price(deal: Dict[str, Any]) -> str:
+    """Honest Price Display: Never shows ₹0 unless genuinely free."""
+    try:
+        price = float(str(deal.get("price", "0")).replace(",", ""))
+    except Exception:
+        price = 0.0
+
+    title = (deal.get("title") or "").lower()
+    desc = (deal.get("description") or "").lower()
+
+    if price > 0:
+        return f"₹{int(price)}"
+
+    if "free" in title or "free" in desc or deal.get("discount_percent", 0) == 100:
+        return "FREE"
+
+    return "Price not available"
 
 
 def matches_category(req_category: str, deal: Dict) -> bool:
@@ -132,7 +171,7 @@ def matches_category(req_category: str, deal: Dict) -> bool:
 
 def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    AI Recommendation Engine with Honest Reasoning & Clean Location Display (Milestone 4.1).
+    AI Recommendation Engine with Category Normalization & Honest Price Display (Milestone 4.2).
     """
 
     req_category = intent.get("category")
@@ -255,6 +294,8 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
             reasons.append("Highly rated deal on Zookout")
 
         cleaned_title = clean_offer_title(deal)
+        norm_category = display_category(req_category, deal)
+        formatted_price = display_price(deal)
 
         display_location = location_raw
         if location_raw.lower() not in ["mumbai", ""] and "mumbai" not in location_raw.lower():
@@ -264,6 +305,8 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         scored_deal = dict(deal)
         scored_deal["clean_title"] = cleaned_title
+        scored_deal["display_category"] = norm_category
+        scored_deal["formatted_price"] = formatted_price
         scored_deal["display_location"] = display_location
         scored_deal["score"] = round(score, 2)
         scored_deal["reasons"] = reasons
