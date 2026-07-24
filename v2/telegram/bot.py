@@ -45,6 +45,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎯 Activities\n\n"
         "Try asking:\n"
         "• Restaurant in Mumbai\n"
+        "• Compare restaurants in Mumbai\n"
         "• Spa under ₹1000\n"
         "• Cafe in Bandra\n"
         "• Recommend something\n"
@@ -58,6 +59,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "I can help you discover, compare, and book local deals across India!\n\n"
         "Available Features & Commands:\n"
         "🍽️ Restaurant & Cafe Deals\n"
+        "📊 AI Smart Deal Comparison (`Compare restaurants`)\n"
         "💆 Spa & Salon Offers\n"
         "🏨 Hotel & Resort Staycations\n"
         "🎯 Entertainment & Water Parks\n"
@@ -66,12 +68,69 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🌟 Personal Recommendations (`Recommend something`)\n"
         "🗓️ AI Day Planner (`Plan my Saturday under ₹2000`)\n\n"
         "Try typing:\n"
-        "• Restaurant in Mumbai\n"
+        "• Compare restaurants in Mumbai\n"
+        "• Best restaurant under ₹1000\n"
         "• Spa under ₹1000\n"
         "• Cafe in Bandra\n"
         "• Recommend something\n"
         "• Plan my Saturday"
     )
+
+
+async def compare_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_intent: dict):
+    """
+    AI Smart Deal Comparison Engine (Milestone 7).
+    Compares up to 5 deals evaluating Brand, Category, Offer, Price, Discount, Location,
+    and highlights Best Overall, Cheapest, and Highest Discount.
+    """
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    intent = memory_manager.update_context(user_id, raw_intent)
+
+    if not intent.get("category"):
+        intent["category"] = "restaurant"
+
+    results = search_deals(intent)
+    if not results:
+        fallback_intent = dict(intent)
+        fallback_intent["max_price"] = None
+        fallback_intent["location"] = None
+        results = search_deals(fallback_intent)
+
+    if not results:
+        await update.message.reply_text("I couldn't find deals to compare right now. Try searching for a specific category or location!")
+        return
+
+    comp_deals = results[:5]
+    for d in comp_deals:
+        profile_manager.add_recently_viewed(user_id, d)
+
+    USER_SEARCH_CACHE[user_id] = comp_deals
+
+    reply = "📊 Deal Comparison\n\n"
+    for i, deal in enumerate(comp_deals, 1):
+        reply += (
+            f"{i}. 🏷️ Brand: {deal.get('brand', 'N/A')}\n"
+            f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+            f"📝 Offer: {deal.get('clean_title')}\n"
+            f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
+            f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+            f"📍 Location: {deal.get('display_location')}\n\n"
+        )
+
+    best_overall = comp_deals[0]
+
+    valid_prices = [d for d in comp_deals if float(str(d.get("price", "0")).replace(",", "")) > 0]
+    cheapest = min(valid_prices, key=lambda x: float(str(x.get("price", "999999")).replace(",", "")), default=best_overall)
+
+    highest_discount = max(comp_deals, key=lambda x: x.get("discount_percent", 0), default=best_overall)
+
+    reply += "━━━━━━━━━━━━━━━━━━\n\n"
+    reply += f"🏆 Best Overall\n{best_overall.get('brand')} – Highest overall recommendation score matching your category, location, and budget criteria.\n\n"
+    reply += f"💰 Cheapest\n{cheapest.get('brand')} – Lowest payable price at {cheapest.get('formatted_price')} among all compared options.\n\n"
+    reply += f"🎁 Highest Discount\n{highest_discount.get('brand')} – Maximum savings offer at {highest_discount.get('discount_percent', 0)}% OFF."
+
+    best_keyboard = build_deal_keyboard(best_overall)
+    await update.message.reply_text(reply, reply_markup=best_keyboard, disable_web_page_preview=True)
 
 
 async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, intent: dict):
@@ -129,6 +188,7 @@ async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 I'm not sure what you mean.\n\n"
         "You can ask me things like:\n"
+        "• Compare restaurants in Mumbai\n"
         "• Restaurant in Mumbai\n"
         "• Spa under ₹1000\n"
         "• Recommend something\n"
@@ -308,7 +368,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 6.4 Conversational Intent Router
+        # Milestone 7 Priority Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
             return
@@ -356,6 +416,11 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
+        # Milestone 7 Comparison Handler
+        if raw_intent["type"] == "compare":
+            await compare_handler(update, context, raw_intent)
+            return
+
         if raw_intent["type"] == "planner":
             await planner_handler(update, context, raw_intent)
             return
@@ -364,7 +429,6 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await personalized_recommendations_handler(update, context)
             return
 
-        # Milestone 6.4 Pagination Intent (Show More / Next / Any Other Options?)
         if raw_intent["type"] == "pagination":
             cached_deals = USER_SEARCH_CACHE.get(user_id, [])
             if not cached_deals:
@@ -399,7 +463,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await fallback_handler(update, context)
             return
 
-        # Milestone 6.4 Context-Aware Search Processing
+        # Standard Context-Aware Search Processing
         intent = memory_manager.update_context(user_id, raw_intent)
         if intent["type"] == "search":
             profile_manager.update_profile_from_intent(user_id, intent)
@@ -408,7 +472,6 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("Message:", message)
         print("Merged Intent:", intent)
 
-        # Search deals using Recommendation Engine
         results = search_deals(intent)
 
         if not results:
@@ -443,9 +506,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(
                     "I couldn't find an exact match.\n\n"
                     "Try searching for:\n"
+                    "• Compare restaurants in Mumbai\n"
                     "• Restaurant in Mumbai\n"
                     "• Spa under ₹1000\n"
-                    "• Salon in Andheri\n"
                     "• Cafe below ₹500"
                 )
             return
@@ -530,7 +593,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Conversational Context Engine...")
+    print("[OK] Zookout AI Bot is running with Smart Deal Comparison Engine...")
     app.run_polling()
 
 

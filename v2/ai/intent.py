@@ -4,22 +4,22 @@ from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
-# Categories and their related keywords (Removed 'show' standalone from 'event' to fix category switching)
+# Categories and their related keywords (Plural forms added for accurate comparison intent extraction)
 CATEGORY_KEYWORDS = {
     "restaurant": ["restaurant", "restaurants", "food", "dining", "dinner", "lunch", "breakfast", "buffet", "biryani", "pizza", "thali"],
-    "cafe": ["cafe", "coffee", "tea", "bakery", "bistro", "snacks"],
-    "spa": ["spa", "massage", "relax", "wellness", "body massage", "therapy"],
-    "salon": ["salon", "haircut", "hair", "beauty", "parlor", "facial", "manicure", "pedicure", "grooming"],
+    "cafe": ["cafe", "cafes", "coffee", "tea", "bakery", "bistro", "snacks"],
+    "spa": ["spa", "spas", "massage", "relax", "wellness", "body massage", "therapy"],
+    "salon": ["salon", "salons", "haircut", "hair", "beauty", "parlor", "facial", "manicure", "pedicure", "grooming"],
     "beauty": ["beauty", "salon", "facial", "makeup", "parlor"],
-    "hotel": ["hotel", "stay", "room", "accommodation"],
-    "resort": ["resort", "staycation", "villa", "getaway"],
-    "pub": ["pub", "bar", "brewery", "beer", "cocktail", "liquor", "drink", "club", "nightlife"],
-    "bar": ["bar", "pub", "brewery", "beer", "cocktail", "liquor", "drink", "club", "nightlife"],
-    "brewery": ["brewery", "beer", "pub", "bar"],
+    "hotel": ["hotel", "hotels", "stay", "room", "accommodation"],
+    "resort": ["resort", "resorts", "staycation", "villa", "getaway"],
+    "pub": ["pub", "pubs", "bar", "bars", "brewery", "breweries", "beer", "cocktail", "liquor", "drink", "club", "nightlife"],
+    "bar": ["bar", "bars", "pub", "pubs", "brewery", "beer", "cocktail", "liquor", "drink", "club", "nightlife"],
+    "brewery": ["brewery", "breweries", "beer", "pub", "bar"],
     "adventure": ["adventure", "outdoor", "trek", "camping", "rafting", "activity"],
     "gaming": ["gaming", "bowling", "arcade", "game", "vr", "play"],
-    "movie": ["movie", "cinema", "film", "multiplex", "ticket"],
-    "event": ["event", "concert", "live show", "stage show", "exhibition"],
+    "movie": ["movie", "movies", "cinema", "film", "multiplex", "ticket"],
+    "event": ["event", "events", "concert", "live show", "stage show", "exhibition"],
     "water park": ["water park", "waterpark", "water", "slides", "pool", "amusement"],
     "fitness": ["fitness", "gym", "workout", "crossfit", "yoga"],
     "kids": ["kids", "child", "children"],
@@ -88,6 +88,12 @@ PERSONALIZED_WORDS = [
     "best deals today", "suggest a spa", "personalized recommendations", "recommended for me"
 ]
 
+COMPARISON_KEYWORDS = [
+    "compare", "comparison", "which is better", "which restaurant is better",
+    "which spa is better", "which cafe is better", "best restaurant under",
+    "best spa under", "best deal under", "compare deals", "compare these"
+]
+
 PAGINATION_WORDS = [
     "show more", "next", "previous", "any other options", "any other options?", "more deals", "other options"
 ]
@@ -118,7 +124,8 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    Intelligent Intent Classifier (Milestone 6.5 Category Switching & Priority Router).
+    Intelligent Intent Classifier (Milestone 7 Comparison Engine Integration).
+    Priority: 1. Commands -> 2. Greetings -> 3. Help -> 4. General FAQ -> 5. Comparison -> 6. Pagination -> 7. Day Planner -> 8. Recommendations -> 9. Search -> 10. Fallback
     """
     text = (message or "").lower().strip()
 
@@ -184,35 +191,13 @@ def detect_intent(message: str) -> Dict[str, Any]:
             intent["faq_answer"] = answer
             return intent
 
-    # 5. Pagination Intent
-    if any(pw in text for pw in PAGINATION_WORDS):
-        intent["type"] = "pagination"
-        return intent
-
-    # 6. Day Planner Intent
-    planner_pattern = r"\b(?:plan|lan|pln|schedule|itinerary)?\s*(?:my\s*)?(?:saturday|sunday|weekend|date|day|family|outing)\b"
-    if re.search(planner_pattern, text) or any(pk in text for pk in PLANNER_KEYWORDS) or "planner" in text or "itinerary" in text:
-        intent["type"] = "planner"
-        max_match = re.search(r"(?:under|below|less than|budget of)\s*₹?\s*(\d+)", text)
-        if max_match:
-            intent["max_price"] = int(max_match.group(1))
-        return intent
-
-    # 7. Recommendation Intent
-    if any(rk in text for rk in PERSONALIZED_WORDS):
-        intent["type"] = "personalized"
-        return intent
-
-    # 8. Search Intent Extraction (Categorization priority over 'show' phrases)
-    category_found = False
+    # Extract Category, Location, Budget Parameters
     sorted_categories = sorted(CATEGORY_KEYWORDS.items(), key=lambda x: max(len(k) for k in x[1]), reverse=True)
     for category, keywords in sorted_categories:
         if any(re.search(r"\b" + re.escape(keyword) + r"\b", text) for keyword in keywords):
             intent["category"] = category
-            category_found = True
             break
 
-    location_found = False
     for loc in LOCATIONS:
         if loc in text:
             intent["location"] = loc.title()
@@ -221,9 +206,39 @@ def detect_intent(message: str) -> Dict[str, Any]:
             else:
                 intent["area"] = loc.title()
                 intent["city"] = "Mumbai"
-            location_found = True
             break
 
+    range_match = re.search(r"(?:between|from)?\s*₹?\s*(\d+)\s*(?:and|to|-)\s*₹?\s*(\d+)", text)
+    if range_match:
+        intent["min_price"] = int(range_match.group(1))
+        intent["max_price"] = int(range_match.group(2))
+    else:
+        max_match = re.search(r"(?:under|below|less than)\s*₹?\s*(\d+)", text)
+        if max_match:
+            intent["max_price"] = int(max_match.group(1))
+
+    # 5. Comparison Intent Check
+    if any(ck in text for ck in COMPARISON_KEYWORDS) or ("compare" in text and ("restaurant" in text or "restaurants" in text or "spa" in text or "spas" in text or "cafe" in text or "cafes" in text or "hotel" in text or "hotels" in text or "deal" in text or "deals" in text)):
+        intent["type"] = "compare"
+        return intent
+
+    # 6. Pagination Intent
+    if any(pw in text for pw in PAGINATION_WORDS):
+        intent["type"] = "pagination"
+        return intent
+
+    # 7. Day Planner Intent
+    planner_pattern = r"\b(?:plan|lan|pln|schedule|itinerary)?\s*(?:my\s*)?(?:saturday|sunday|weekend|date|day|family|outing)\b"
+    if re.search(planner_pattern, text) or any(pk in text for pk in PLANNER_KEYWORDS) or "planner" in text or "itinerary" in text:
+        intent["type"] = "planner"
+        return intent
+
+    # 8. Recommendation Intent
+    if any(rk in text for rk in PERSONALIZED_WORDS):
+        intent["type"] = "personalized"
+        return intent
+
+    # 9. Search Intent
     for occasion, keywords in OCCASIONS.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
             intent["occasion"] = occasion
@@ -235,19 +250,10 @@ def detect_intent(message: str) -> Dict[str, Any]:
             extracted_prefs.append(pref)
     intent["preferences"] = extracted_prefs
 
-    range_match = re.search(r"(?:between|from)?\s*₹?\s*(\d+)\s*(?:and|to|-)\s*₹?\s*(\d+)", text)
-    if range_match:
-        intent["min_price"] = int(range_match.group(1))
-        intent["max_price"] = int(range_match.group(2))
-    else:
-        max_match = re.search(r"(?:under|below|less than)\s*₹?\s*(\d+)", text)
-        if max_match:
-            intent["max_price"] = int(max_match.group(1))
-
     budget_found = intent["max_price"] is not None or intent["min_price"] is not None
     is_modifier = any(w in text for w in ["cheaper", "luxury", "premium", "budget", "only", "near", "instead"])
 
-    if category_found or location_found or budget_found or intent["occasion"] or intent["preferences"] or is_modifier:
+    if intent["category"] or intent["location"] or budget_found or intent["occasion"] or intent["preferences"] or is_modifier:
         intent["type"] = "search"
         return intent
 
@@ -255,7 +261,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
         intent["type"] = "out_of_scope"
         return intent
 
-    # 9. Fallback Intent
+    # 10. Fallback Intent
     intent["type"] = "fallback"
     logger.info(f"[NLU Extracted Intent]: {intent}")
     return intent
