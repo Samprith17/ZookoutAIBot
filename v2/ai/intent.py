@@ -4,7 +4,7 @@ from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
-# Categories and their related keywords
+# Categories and their related keywords (Removed 'show' standalone from 'event' to fix category switching)
 CATEGORY_KEYWORDS = {
     "restaurant": ["restaurant", "restaurants", "food", "dining", "dinner", "lunch", "breakfast", "buffet", "biryani", "pizza", "thali"],
     "cafe": ["cafe", "coffee", "tea", "bakery", "bistro", "snacks"],
@@ -19,7 +19,7 @@ CATEGORY_KEYWORDS = {
     "adventure": ["adventure", "outdoor", "trek", "camping", "rafting", "activity"],
     "gaming": ["gaming", "bowling", "arcade", "game", "vr", "play"],
     "movie": ["movie", "cinema", "film", "multiplex", "ticket"],
-    "event": ["event", "concert", "show", "pass", "exhibition"],
+    "event": ["event", "concert", "live show", "stage show", "exhibition"],
     "water park": ["water park", "waterpark", "water", "slides", "pool", "amusement"],
     "fitness": ["fitness", "gym", "workout", "crossfit", "yoga"],
     "kids": ["kids", "child", "children"],
@@ -118,8 +118,7 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    Intelligent Intent Classifier (Milestone 6.4 Conversational Architecture).
-    Priority: 1. Commands -> 2. Greetings -> 3. Help -> 4. General Questions -> 5. Pagination -> 6. Day Planner -> 7. Recommendations -> 8. Search -> 9. Fallback
+    Intelligent Intent Classifier (Milestone 6.5 Category Switching & Priority Router).
     """
     text = (message or "").lower().strip()
 
@@ -185,7 +184,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
             intent["faq_answer"] = answer
             return intent
 
-    # 5. Pagination Intent (Show More / Next / Any Other Options?)
+    # 5. Pagination Intent
     if any(pw in text for pw in PAGINATION_WORDS):
         intent["type"] = "pagination"
         return intent
@@ -204,7 +203,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
         intent["type"] = "personalized"
         return intent
 
-    # 8. Search / Follow-up Search Intent Extraction
+    # 8. Search Intent Extraction (Categorization priority over 'show' phrases)
     category_found = False
     sorted_categories = sorted(CATEGORY_KEYWORDS.items(), key=lambda x: max(len(k) for k in x[1]), reverse=True)
     for category, keywords in sorted_categories:
@@ -246,7 +245,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
             intent["max_price"] = int(max_match.group(1))
 
     budget_found = intent["max_price"] is not None or intent["min_price"] is not None
-    is_modifier = any(w in text for w in ["cheaper", "luxury", "premium", "budget", "only", "near"])
+    is_modifier = any(w in text for w in ["cheaper", "luxury", "premium", "budget", "only", "near", "instead"])
 
     if category_found or location_found or budget_found or intent["occasion"] or intent["preferences"] or is_modifier:
         intent["type"] = "search"

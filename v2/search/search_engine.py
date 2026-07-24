@@ -21,8 +21,8 @@ DEALS = load_deals()
 
 def clean_offer_title(deal: Dict[str, Any]) -> str:
     """
-    Intelligent Offer Title Extraction Engine (Milestone 6.1):
-    Rejects OCR junk, trailing concatenated words (e.g. 'B U Yp Athyi', 'Beersppaaiyre', 'Midnight'),
+    Intelligent Offer Title Extraction Engine (Milestone 6.5):
+    Rejects OCR junk, trailing concatenated words (e.g. 'B U Yp Athyi', 'Beersppaaiyre', 'Imcpel', 'Imsaelnotna'),
     and outputs 100% human-readable titles.
     """
     title = (deal.get("title") or "").strip()
@@ -75,7 +75,7 @@ def clean_offer_title(deal: Dict[str, Any]) -> str:
                 return clean[:70].title()
 
     # Clean title directly if it does not contain heavy OCR junk or single-word junk
-    ocr_junk = r"\b(?:Offline|Anot|Wr|E|St|Cveis|Hpearya|Oitf|Pmaays|Smpiau|Tphree|HThoete|SHyodteelw|Soukb|Gsatalauxryant|Bbiulliyn|Bsuhyo|Midnight|Athyi)\b"
+    ocr_junk = r"\b(?:Offline|Anot|Wr|E|St|Cveis|Hpearya|Oitf|Pmaays|Smpiau|Tphree|HThoete|SHyodteelw|Soukb|Gsatalauxryant|Bbiulliyn|Bsuhyo|Midnight|Athyi|Imcpel|Imsaelnotna|Acto|Term Results)\b"
     if not re.search(ocr_junk, title, flags=re.IGNORECASE):
         cleaned_t = title
         cleaned_t = re.sub(r"\b\d+\s+At\b.*", "", cleaned_t, flags=re.IGNORECASE)
@@ -86,28 +86,37 @@ def clean_offer_title(deal: Dict[str, Any]) -> str:
         if len(cleaned_t) >= 6 and not cleaned_t.isdigit():
             return cleaned_t[:70]
 
-    # Fallback using Tags & Category
+    # Fallback using Category & Brand
+    cat_str = category if category and category != "Unknown" else "Special Experience"
     if tags:
         tag_str = " ".join(tags[:2]).title()
-        cat_str = category if category and category != "Unknown" else "Deal"
         return f"{cat_str} - {tag_str} Offer"
 
-    cat_str = category if category and category != "Unknown" else "Special Experience"
     return f"{cat_str} Offer at {brand or 'Zookout Merchant'}"
 
 
 def display_category(req_category: Optional[str], deal: Dict[str, Any]) -> str:
-    """Category Normalization: Displays 'Spa & Salon' or 'Spa' when user queries spa deals."""
+    """Category Normalization (Milestone 6.5): Ensures exact requested category is displayed."""
     raw_cat = (deal.get("category") or "").strip()
     title = (deal.get("title") or "").lower()
     desc = (deal.get("description") or "").lower()
     tags = [str(t).lower() for t in deal.get("tags", [])]
     full_text = f"{title} {desc} {' '.join(tags)}"
 
-    if req_category and req_category.lower() == "spa":
-        if "salon" in raw_cat.lower():
-            return "Spa & Salon"
-        return "Spa"
+    if req_category:
+        req = req_category.lower()
+        if req == "cafe":
+            return "Cafe"
+        if req == "spa":
+            if "salon" in raw_cat.lower():
+                return "Spa & Salon"
+            return "Spa"
+        if req == "restaurant":
+            return "Restaurant"
+        if req in ["hotel", "resort"]:
+            return "Hotel"
+        if req in ["salon", "beauty"]:
+            return "Salon"
 
     if raw_cat and raw_cat != "Unknown":
         return raw_cat.title()
@@ -158,7 +167,7 @@ def matches_category(req_category: str, deal: Dict) -> bool:
         return cat in ["restaurant", "cafe"] or "restaurant" in text_content or "buffet" in text_content or "thali" in text_content
 
     if req == "cafe":
-        return cat in ["cafe", "restaurant"] or "cafe" in text_content or "coffee" in text_content
+        return cat in ["cafe", "restaurant"] or "cafe" in text_content or "coffee" in text_content or "bistro" in text_content
 
     if req in ["hotel", "resort"]:
         return cat in ["hotel", "unknown"] or "hotel" in text_content or "resort" in text_content or "stay" in text_content
@@ -179,7 +188,7 @@ def matches_category(req_category: str, deal: Dict) -> bool:
 
 def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    AI Recommendation Engine with Category Normalization & Honest Price Display (Milestone 6.1).
+    AI Recommendation Engine with Honest Price Reasoning & Category Normalization (Milestone 6.5).
     """
 
     req_category = intent.get("category")
@@ -261,11 +270,14 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
             else:
                 score += 5
 
-        # 3. Budget Match (20 pts)
+        # 3. Budget Match (20 pts) - HONEST PRICE REASONING (Milestone 6.5)
         if max_price is not None:
-            if price <= max_price:
+            if price > 0 and price <= max_price:
                 score += 20
                 reasons.append(f"Fits your budget (₹{int(price)} vs under ₹{max_price})")
+            elif price <= 0:
+                score += 5
+                reasons.append("Price details available upon contacting venue")
             else:
                 score += 5
         elif min_price is not None:
