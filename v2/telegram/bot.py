@@ -45,11 +45,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎯 Activities\n\n"
         "Try asking:\n"
         "• Plan a romantic evening under ₹2000\n"
-        "• Plan birthday under ₹3000\n"
+        "• Plan a birthday under ₹3000\n"
+        "• Plan a family outing\n"
+        "• Plan a relaxing day\n"
         "• Weekend with friends\n"
-        "• Relax today\n"
-        "• Business lunch\n"
-        "• Family outing"
+        "• Plan a business lunch"
     )
 
 
@@ -70,19 +70,19 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🌟 Personal Recommendations (`Recommend something`)\n\n"
         "Try typing:\n"
         "• Plan a romantic evening under ₹2000\n"
-        "• Plan birthday under ₹3000\n"
+        "• Plan a birthday under ₹3000\n"
+        "• Plan a family outing\n"
+        "• Plan a relaxing day\n"
         "• Weekend with friends\n"
-        "• Relax today\n"
-        "• Business lunch\n"
-        "• Family outing"
+        "• Plan a business lunch"
     )
 
 
 async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_intent: dict):
     """
-    AI Experience Planner Engine (Milestone 9).
-    Generates a complete multi-step itinerary matching Occasion, Budget, Location, Time, and Group Type.
-    Includes budget management (Total Cost, Remaining Budget) and brand de-duplication.
+    AI Experience Planner Engine (Milestone 9.1 Complete Templates & Budget Manager).
+    Generates 2–4 chronological itinerary steps with budget tracking (Estimated Total, Remaining Budget)
+    and brand de-duplication across Romantic, Birthday, Weekend Friends, Relax, Family, Business, and Solo templates.
     """
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
     intent = memory_manager.update_context(user_id, raw_intent)
@@ -92,68 +92,75 @@ async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
     max_price = intent.get("max_price")
     occasion = (intent.get("occasion") or "").lower()
 
-    # Identify Experience Blueprint from Occasion / Query Context
+    # Milestone 9.1 Specific Itinerary Templates
     if "romantic" in occasion or "romantic" in user_query or "date" in user_query:
         exp_title = "Romantic Evening"
         steps = [
-            ("🌅 Afternoon Relaxation & Cafe", ["spa", "cafe"], 0.4),
-            ("🌙 Evening Fine Dining", ["restaurant"], 0.6),
+            ("☕ Coffee & Atmosphere", ["cafe", "spa"], 0.25),
+            ("🌙 Fine Dining Experience", ["restaurant"], 0.50),
+            ("🍰 Late Night Dessert & Lounge", ["cafe", "pub", "bar"], 0.25),
         ]
-        fit_reason = "Selected for an intimate romantic evening combining relaxation, high-discount fine dining, and memorable ambience."
+        fit_reason = "Selected for an intimate romantic evening combining relaxed coffee, high-discount fine dining, and late-night lounge desserts."
 
     elif "birthday" in occasion or "birthday" in user_query or "celebrate" in user_query:
         exp_title = "Birthday Celebration"
         steps = [
-            ("🎉 Afternoon Fun & Activity", ["entertainment", "gaming", "water park", "cafe"], 0.4),
-            ("🌙 Birthday Feast & Dinner", ["restaurant"], 0.6),
+            ("🎉 Fun Activity & Entertainment", ["entertainment", "gaming", "water park"], 0.30),
+            ("🍽️ Celebration Lunch", ["restaurant"], 0.30),
+            ("☕ Birthday Cafe & Treats", ["cafe"], 0.15),
+            ("🌙 Festive Birthday Dinner", ["restaurant"], 0.25),
         ]
-        fit_reason = "Curated for a festive birthday celebration featuring exciting activities and top-rated group dining."
+        fit_reason = "Curated for a festive birthday celebration featuring thrilling group activities, lunch, cafe treats, and a grand dinner."
 
-    elif "family" in occasion or "family" in user_query or "kids" in user_query:
-        exp_title = "Family Outing"
+    elif "relax" in occasion or "relax" in user_query or "massage" in user_query or "wellness" in user_query:
+        exp_title = "Relaxing Day"
         steps = [
-            ("👨‍👩‍👧‍👦 Family Fun & Entertainment", ["water park", "adventure", "gaming", "entertainment"], 0.5),
-            ("🍽️ Family Feast & Dining", ["restaurant"], 0.5),
+            ("💆 Spa Therapy & Wellness", ["spa"], 0.50),
+            ("☕ Relaxing Tea & Cafe", ["cafe"], 0.20),
+            ("🌙 Peaceful Dinner", ["restaurant"], 0.30),
         ]
-        fit_reason = "Balanced for family enjoyment with engaging activities and spacious family dining venues."
+        fit_reason = "Tailored for complete body and mind rejuvenation with premium spa therapy, peaceful cafe beverages, and dinner."
 
     elif "friend" in occasion or "friend" in user_query or "friends" in user_query:
         exp_title = "Weekend with Friends"
         steps = [
-            ("🎯 Afternoon Activity & Hangout", ["gaming", "adventure", "cafe"], 0.4),
-            ("🍹 Evening Pub & Drinks", ["pub", "bar", "restaurant"], 0.6),
+            ("🎯 Group Activity & Hangout", ["gaming", "adventure", "entertainment"], 0.35),
+            ("☕ Cafe & Chill", ["cafe"], 0.25),
+            ("🍹 Evening Pub & Dinner", ["restaurant", "pub", "bar"], 0.40),
         ]
-        fit_reason = "Designed for a lively group hangout with fun activities and evening food & drinks."
+        fit_reason = "Designed for a lively group hangout with fun activities, casual cafe socializing, and evening pub dining."
+
+    elif "family" in occasion or "family" in user_query or "kids" in user_query:
+        exp_title = "Family Outing"
+        steps = [
+            ("👨‍👩‍👧‍👦 Family Fun & Entertainment", ["water park", "adventure", "gaming", "entertainment"], 0.40),
+            ("☕ Midday Refreshments & Cafe", ["cafe", "restaurant"], 0.20),
+            ("🍽️ Family Dinner", ["restaurant"], 0.40),
+        ]
+        fit_reason = "Balanced for family enjoyment with engaging activities, midday refreshments, and spacious family dining."
 
     elif "business" in occasion or "business" in user_query:
-        exp_title = "Business Meeting & Lunch"
+        exp_title = "Business Lunch"
         steps = [
-            ("☕ Morning Coffee & Strategy", ["cafe"], 0.3),
-            ("💼 Formal Business Lunch", ["restaurant"], 0.7),
+            ("☕ Morning Coffee & Strategy", ["cafe"], 0.30),
+            ("💼 Executive Business Lunch", ["restaurant"], 0.70),
         ]
-        fit_reason = "Optimized for professional discussions in quiet, executive dining and cafe venues."
+        fit_reason = "Optimized for professional discussions in quiet, executive cafe and dining venues."
 
-    elif "relax" in occasion or "relax" in user_query or "massage" in user_query or "wellness" in user_query:
-        exp_title = "Relaxation & Wellness Day"
+    elif "solo" in occasion or "solo" in user_query:
+        exp_title = "Solo Day"
         steps = [
-            ("💆 Spa Therapy & Wellness", ["spa"], 0.6),
-            ("☕ Relaxing Tea & Cafe", ["cafe"], 0.4),
+            ("☕ Quiet Cafe & Coffee", ["cafe"], 0.30),
+            ("💆 Solo Spa & Relaxation", ["spa", "entertainment"], 0.45),
+            ("🍽️ Solo Gourmet Dinner", ["restaurant"], 0.25),
         ]
-        fit_reason = "Tailored for complete body and mind rejuvenation with premium spa therapy followed by relaxing cafe beverages."
-
-    elif "adventure" in occasion or "adventure" in user_query:
-        exp_title = "Adventure Outing"
-        steps = [
-            ("🧗 Outdoor & Thrill Activity", ["adventure", "water park", "gaming"], 0.6),
-            ("🍽️ Post-Adventure Dining", ["restaurant", "pub"], 0.4),
-        ]
-        fit_reason = "Packed with high-energy activities followed by satisfying post-adventure dining."
+        fit_reason = "Curated for a peaceful solo day featuring quiet reading cafes, personal spa wellness, and gourmet dining."
 
     else:
         exp_title = "Weekend Experience"
         steps = [
-            ("🌅 Afternoon Activity", ["spa", "cafe", "entertainment"], 0.4),
-            ("🌙 Evening Dining", ["restaurant", "pub"], 0.6),
+            ("🌅 Afternoon Activity & Cafe", ["spa", "cafe", "entertainment"], 0.40),
+            ("🌙 Evening Dining", ["restaurant", "pub"], 0.60),
         ]
         fit_reason = "A well-rounded weekend experience combining daytime leisure and evening dining."
 
@@ -238,7 +245,7 @@ async def occasion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, r
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
     user_query = (raw_intent.get("query") or "").lower()
 
-    # If user asked for an itinerary/plan (e.g. "Weekend with friends", "Family outing", "Relax today"), route to planner_handler!
+    # Route plan / itinerary requests to planner_handler
     if any(k in user_query for k in ["weekend", "outing", "plan", "relax", "itinerary"]):
         await planner_handler(update, context, raw_intent)
         return
@@ -542,7 +549,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 9 AI Experience Planner Priority Router
+        # Milestone 9.1 AI Experience Planner Priority Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
             return
@@ -590,7 +597,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Milestone 9 AI Experience Planner Handler
+        # Milestone 9.1 Planner Priority Route
         if raw_intent["type"] == "planner":
             await planner_handler(update, context, raw_intent)
             return
@@ -685,7 +692,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "I couldn't find an exact match.\n\n"
                     "Try searching for:\n"
                     "• Plan a romantic evening under ₹2000\n"
-                    "• Plan birthday under ₹3000\n"
+                    "• Plan a birthday under ₹3000\n"
                     "• Weekend with friends\n"
                     "• Relax today"
                 )
@@ -771,7 +778,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with AI Experience Planner Engine...")
+    print("[OK] Zookout AI Bot is running with Milestone 9.1 AI Experience Planner...")
     app.run_polling()
 
 

@@ -30,7 +30,7 @@ CATEGORY_KEYWORDS = {
 OCCASION_MAP = {
     "Romantic Evening": (["romantic", "candle light", "date night", "romantic dinner", "romantic evening", "anniversary", "date"], "restaurant"),
     "Birthday Celebration": (["birthday", "bday", "b-day", "birthday celebration", "celebrate promotion", "celebrate success", "celebrate"], "restaurant"),
-    "Relaxation & Wellness": (["relax", "relax today", "need a massage", "feeling stressed", "stress", "wellness"], "spa"),
+    "Relaxation & Wellness": (["relax", "relax today", "relaxing day", "need a massage", "feeling stressed", "stress", "wellness"], "spa"),
     "Coffee & Cafe Meetup": (["coffee meeting", "coffee with friends", "cafe meetup"], "cafe"),
     "Business Lunch & Meeting": (["business meeting", "business lunch", "corporate meeting", "formal meeting"], "restaurant"),
     "Family Outing & Dinner": (["family dinner", "family lunch", "family outing", "kids outing"], "restaurant"),
@@ -96,16 +96,15 @@ PAGINATION_WORDS = [
     "show more", "next", "previous", "any other options", "any other options?", "more deals", "other options"
 ]
 
+PLANNER_TRIGGERS = [
+    "plan", "create", "organize", "build", "itinerary", "schedule", "planner", "weekend with friends"
+]
+
 RECENT_WORDS = ["recent", "recently viewed", "history", "/history"]
 PROFILE_WORDS = ["my preferences", "my profile", "show my interests", "/profile"]
 RESET_PROFILE_WORDS = ["reset profile", "forget my preferences", "clear history", "/reset_profile"]
 FAVOURITES_WORDS = ["my favourites", "favorites", "saved deals", "favourites", "/favourites"]
 CLEAR_FAVOURITES_WORDS = ["clear favourites", "delete favourites", "/clear_favourites"]
-
-PLANNER_KEYWORDS = [
-    "plan my saturday", "plan my sunday", "weekend plan", "date night plan",
-    "family outing", "plan my weekend", "day planner", "plan my day", "experience plan"
-]
 
 FAQ_QUESTIONS = {
     "who are you": "🤖 I am Zookout AI, your intelligent virtual assistant for discovering local deals, dining, spas, salons, and activities across India!",
@@ -122,8 +121,8 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    Intelligent Intent Classifier (Milestone 9 AI Experience Planner Architecture).
-    Priority: 1. Commands -> 2. Greetings -> 3. Help -> 4. General FAQ -> 5. Planner -> 6. Occasion -> 7. Comparison -> 8. Pagination -> 9. Recommendations -> 10. Search -> 11. Fallback
+    Intelligent Intent Classifier (Milestone 9.1 AI Experience Planner Priority Router).
+    Priority: 1. Commands -> 2. Greetings -> 3. Help -> 4. General FAQ -> 5. PLANNER (High Priority) -> 6. Occasion -> 7. Comparison -> 8. Pagination -> 9. Recommendations -> 10. Search -> 11. Fallback
     """
     text = (message or "").lower().strip()
 
@@ -223,9 +222,10 @@ def detect_intent(message: str) -> Dict[str, Any]:
                 intent["category"] = default_cat
             break
 
-    # 5. AI Experience Planner Intent Check (Triggers when 'plan', 'itinerary', 'schedule' or explicit planner requests present)
-    planner_pattern = r"\b(?:plan|lan|pln|schedule|itinerary|experience)\b"
-    if re.search(planner_pattern, text) or "planner" in text or "itinerary" in text or text.startswith("plan "):
+    # 5. AI EXPERIENCE PLANNER INTENT CHECK (HIGHEST PRIORITY ROUTING - Milestone 9.1)
+    # Queries starting with or containing plan, create, organize, build, itinerary, or explicit planner phrases MUST trigger planner!
+    is_planner_trigger = any(re.search(r"\b" + re.escape(pt) + r"\b", text) for pt in PLANNER_TRIGGERS) or any(text.startswith(p) for p in ["plan ", "create ", "organize ", "build "])
+    if is_planner_trigger:
         intent["type"] = "planner"
         return intent
 
