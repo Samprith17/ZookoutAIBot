@@ -76,7 +76,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, intent: dict):
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
-    max_price = intent.get("max_price") or 3000
+    max_price = intent.get("max_price") or 2000
 
     dining_intent = {"type": "search", "category": "restaurant", "city": "Mumbai", "max_price": max_price / 2}
     spa_intent = {"type": "search", "category": "spa", "city": "Mumbai", "max_price": max_price / 2}
@@ -308,8 +308,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 6.3 Strict Priority Routing Hierarchy:
-        # Priority 1: Commands & Greetings
+        # Milestone 6.4 Conversational Intent Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
             return
@@ -334,12 +333,10 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await reset_profile_handler(update, context)
             return
 
-        # Priority 3: Help
         if raw_intent["type"] == "help":
             await help_handler(update, context)
             return
 
-        # Priority 4: General Questions / FAQ
         if raw_intent["type"] == "faq":
             await update.message.reply_text(raw_intent["faq_answer"])
             return
@@ -359,22 +356,50 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Priority 5: Day Planner Intent
         if raw_intent["type"] == "planner":
             await planner_handler(update, context, raw_intent)
             return
 
-        # Priority 6: Recommendation Intent (Explicit Only)
         if raw_intent["type"] == "personalized":
             await personalized_recommendations_handler(update, context)
             return
 
-        # Priority 8: Fallback Intent
+        # Milestone 6.4 Pagination Intent (Show More / Next / Any Other Options?)
+        if raw_intent["type"] == "pagination":
+            cached_deals = USER_SEARCH_CACHE.get(user_id, [])
+            if not cached_deals:
+                await personalized_recommendations_handler(update, context)
+                return
+
+            offset = 4
+            next_batch = cached_deals[offset : offset + 4]
+            for deal in next_batch:
+                profile_manager.add_recently_viewed(user_id, deal)
+                title = deal.get("clean_title", deal.get("title", ""))
+                reply = (
+                    f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
+                    f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+                    f"📝 Offer: {title}\n"
+                    f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
+                    f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+                    f"📍 Location: {deal.get('display_location')}\n"
+                )
+                keyboard = build_deal_keyboard(deal)
+                await update.message.reply_text(reply, reply_markup=keyboard, disable_web_page_preview=True)
+
+            if offset + 4 < len(cached_deals):
+                p_keyboard = build_pagination_keyboard(offset + 4)
+                await update.message.reply_text(
+                    f"Showing deals {offset + 1}-{min(offset + 4, len(cached_deals))} of {len(cached_deals)}. Click below for more!",
+                    reply_markup=p_keyboard,
+                )
+            return
+
         if raw_intent["type"] == "fallback":
             await fallback_handler(update, context)
             return
 
-        # Priority 7: Search Intent
+        # Milestone 6.4 Context-Aware Search Processing
         intent = memory_manager.update_context(user_id, raw_intent)
         if intent["type"] == "search":
             profile_manager.update_profile_from_intent(user_id, intent)
@@ -505,7 +530,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Prioritized Intent Router...")
+    print("[OK] Zookout AI Bot is running with Conversational Context Engine...")
     app.run_polling()
 
 

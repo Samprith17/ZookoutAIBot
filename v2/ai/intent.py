@@ -72,7 +72,7 @@ TIME_FILTERS = {
 }
 
 LOCATIONS = [
-    "andheri", "bandra", "powai", "juhu", "thane", "borivali", "mumbai", "dadar", "worli", "lower parel", "malad", "vashi"
+    "andheri", "bandra", "powai", "juhu", "thane", "borivali", "mumbai", "dadar", "worli", "lower parel", "malad", "vashi", "airport"
 ]
 
 GREETINGS = [
@@ -86,6 +86,10 @@ PERSONALIZED_WORDS = [
     "recommend something", "suggest a deal", "suggest deals", "recommend a restaurant",
     "any recommendations", "any recommendations?", "what should i do today",
     "best deals today", "suggest a spa", "personalized recommendations", "recommended for me"
+]
+
+PAGINATION_WORDS = [
+    "show more", "next", "previous", "any other options", "any other options?", "more deals", "other options"
 ]
 
 RECENT_WORDS = ["recent", "recently viewed", "history", "/history"]
@@ -114,8 +118,8 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    Intelligent Intent Classifier (Milestone 6.3 Prioritized Architecture).
-    Priority: 1. Commands -> 2. Greetings -> 3. Help -> 4. General Questions -> 5. Day Planner -> 6. Recommendations -> 7. Search -> 8. Fallback
+    Intelligent Intent Classifier (Milestone 6.4 Conversational Architecture).
+    Priority: 1. Commands -> 2. Greetings -> 3. Help -> 4. General Questions -> 5. Pagination -> 6. Day Planner -> 7. Recommendations -> 8. Search -> 9. Fallback
     """
     text = (message or "").lower().strip()
 
@@ -139,7 +143,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
         "query": message,
     }
 
-    # 1. Commands (Highest Priority)
+    # 1. Commands
     if text in ["/start", "start"]:
         intent["type"] = "greeting"
         return intent
@@ -181,7 +185,12 @@ def detect_intent(message: str) -> Dict[str, Any]:
             intent["faq_answer"] = answer
             return intent
 
-    # 5. Day Planner Intent (Flexible Pattern & Typo Tolerance)
+    # 5. Pagination Intent (Show More / Next / Any Other Options?)
+    if any(pw in text for pw in PAGINATION_WORDS):
+        intent["type"] = "pagination"
+        return intent
+
+    # 6. Day Planner Intent
     planner_pattern = r"\b(?:plan|lan|pln|schedule|itinerary)?\s*(?:my\s*)?(?:saturday|sunday|weekend|date|day|family|outing)\b"
     if re.search(planner_pattern, text) or any(pk in text for pk in PLANNER_KEYWORDS) or "planner" in text or "itinerary" in text:
         intent["type"] = "planner"
@@ -190,12 +199,12 @@ def detect_intent(message: str) -> Dict[str, Any]:
             intent["max_price"] = int(max_match.group(1))
         return intent
 
-    # 6. Recommendation Intent
+    # 7. Recommendation Intent
     if any(rk in text for rk in PERSONALIZED_WORDS):
         intent["type"] = "personalized"
         return intent
 
-    # 7. Search Intent Extraction
+    # 8. Search / Follow-up Search Intent Extraction
     category_found = False
     sorted_categories = sorted(CATEGORY_KEYWORDS.items(), key=lambda x: max(len(k) for k in x[1]), reverse=True)
     for category, keywords in sorted_categories:
@@ -216,20 +225,17 @@ def detect_intent(message: str) -> Dict[str, Any]:
             location_found = True
             break
 
-    # Occasions
     for occasion, keywords in OCCASIONS.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
             intent["occasion"] = occasion
             break
 
-    # Preferences
     extracted_prefs = []
     for pref, keywords in PREFERENCES.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
             extracted_prefs.append(pref)
     intent["preferences"] = extracted_prefs
 
-    # Budget Range & Max Price
     range_match = re.search(r"(?:between|from)?\s*₹?\s*(\d+)\s*(?:and|to|-)\s*₹?\s*(\d+)", text)
     if range_match:
         intent["min_price"] = int(range_match.group(1))
@@ -240,8 +246,9 @@ def detect_intent(message: str) -> Dict[str, Any]:
             intent["max_price"] = int(max_match.group(1))
 
     budget_found = intent["max_price"] is not None or intent["min_price"] is not None
+    is_modifier = any(w in text for w in ["cheaper", "luxury", "premium", "budget", "only", "near"])
 
-    if category_found or location_found or budget_found or intent["occasion"] or intent["preferences"]:
+    if category_found or location_found or budget_found or intent["occasion"] or intent["preferences"] or is_modifier:
         intent["type"] = "search"
         return intent
 
@@ -249,7 +256,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
         intent["type"] = "out_of_scope"
         return intent
 
-    # 8. Fallback Intent
+    # 9. Fallback Intent
     intent["type"] = "fallback"
     logger.info(f"[NLU Extracted Intent]: {intent}")
     return intent
