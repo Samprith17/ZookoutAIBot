@@ -36,15 +36,103 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"👋 Hello {first_name}!\n\n"
         "I'm Zookout AI.\n\n"
-        "I can help you discover amazing deals.\n\n"
-        "You can ask things like:\n"
-        "🍽 Restaurant in Mumbai\n"
-        "💆 Spa under ₹1000\n"
-        "☕ Cafe below ₹500\n"
-        "🏨 Luxury hotel\n"
-        "🎉 Birthday celebration\n\n"
-        "or try asking:\n"
-        "🌟 \"Recommend something\""
+        "I can help you discover amazing offers on:\n\n"
+        "🍽 Restaurants\n"
+        "☕ Cafes\n"
+        "💆 Spas\n"
+        "💇 Salons\n"
+        "🏨 Hotels\n"
+        "🎯 Activities\n\n"
+        "Try asking:\n"
+        "• Restaurant in Mumbai\n"
+        "• Spa under ₹1000\n"
+        "• Cafe in Bandra\n"
+        "• Recommend something\n"
+        "• Plan my Saturday"
+    )
+
+
+async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 Zookout AI Guide & Supported Features\n\n"
+        "I can help you discover, compare, and book local deals across India!\n\n"
+        "Available Features & Commands:\n"
+        "🍽️ Restaurant & Cafe Deals\n"
+        "💆 Spa & Salon Offers\n"
+        "🏨 Hotel & Resort Staycations\n"
+        "🎯 Entertainment & Water Parks\n"
+        "❤️ My Favourites (`My Favourites`)\n"
+        "📜 Search History (`Recently Viewed`)\n"
+        "🌟 Personal Recommendations (`Recommend something`)\n"
+        "🗓️ AI Day Planner (`Plan my Saturday under ₹2000`)\n\n"
+        "Try typing:\n"
+        "• Restaurant in Mumbai\n"
+        "• Spa under ₹1000\n"
+        "• Cafe in Bandra\n"
+        "• Recommend something\n"
+        "• Plan my Saturday"
+    )
+
+
+async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, intent: dict):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    max_price = intent.get("max_price") or 3000
+
+    dining_intent = {"type": "search", "category": "restaurant", "city": "Mumbai", "max_price": max_price / 2}
+    spa_intent = {"type": "search", "category": "spa", "city": "Mumbai", "max_price": max_price / 2}
+
+    dining_deals = search_deals(dining_intent)
+    spa_deals = search_deals(spa_intent)
+
+    reply = "🗓️ AI Day Planner Itinerary\n\n"
+    total_cost = 0
+
+    if spa_deals:
+        spa = spa_deals[0]
+        try:
+            total_cost += float(str(spa.get("price", "0")).replace(",", ""))
+        except Exception:
+            pass
+        reply += (
+            "🌅 Morning / Relaxation Experience\n"
+            f"🏷️ Brand: {spa.get('brand', 'N/A')}\n"
+            f"📂 Category: {spa.get('display_category', 'Spa')}\n"
+            f"📝 Offer: {spa.get('clean_title')}\n"
+            f"💰 Price: {spa.get('formatted_price')}\n"
+            f"📍 Location: {spa.get('display_location')}\n\n"
+        )
+        profile_manager.add_recently_viewed(user_id, spa)
+
+    if dining_deals:
+        dine = dining_deals[0]
+        try:
+            total_cost += float(str(dine.get("price", "0")).replace(",", ""))
+        except Exception:
+            pass
+        reply += (
+            "🌙 Evening / Dining Experience\n"
+            f"🏷️ Brand: {dine.get('brand', 'N/A')}\n"
+            f"📂 Category: {dine.get('display_category', 'Restaurant')}\n"
+            f"📝 Offer: {dine.get('clean_title')}\n"
+            f"💰 Price: {dine.get('formatted_price')}\n"
+            f"📍 Location: {dine.get('display_location')}\n\n"
+        )
+        profile_manager.add_recently_viewed(user_id, dine)
+
+    if total_cost > 0:
+        reply += f"💡 Total Estimated Cost: ₹{int(total_cost)}"
+
+    await update.message.reply_text(reply, disable_web_page_preview=True)
+
+
+async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 I'm not sure what you mean.\n\n"
+        "You can ask me things like:\n"
+        "• Restaurant in Mumbai\n"
+        "• Spa under ₹1000\n"
+        "• Recommend something\n"
+        "• Plan my Saturday"
     )
 
 
@@ -220,25 +308,14 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 6.3 Greeting & Command Intent Separation (Greeting Never Returns Deals!)
+        # Milestone 6.3 Strict Priority Routing Hierarchy:
+        # Priority 1: Commands & Greetings
         if raw_intent["type"] == "greeting":
             await start(update, context)
             return
 
         if raw_intent["type"] == "recent":
             await recently_viewed_handler(update, context)
-            return
-
-        if raw_intent["type"] == "personalized":
-            await personalized_recommendations_handler(update, context)
-            return
-
-        if raw_intent["type"] == "profile":
-            await profile_preferences_handler(update, context)
-            return
-
-        if raw_intent["type"] == "reset_profile":
-            await reset_profile_handler(update, context)
             return
 
         if raw_intent["type"] == "favourites":
@@ -249,15 +326,22 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await clear_favourites_handler(update, context)
             return
 
+        if raw_intent["type"] == "profile":
+            await profile_preferences_handler(update, context)
+            return
+
+        if raw_intent["type"] == "reset_profile":
+            await reset_profile_handler(update, context)
+            return
+
+        # Priority 3: Help
         if raw_intent["type"] == "help":
-            await update.message.reply_text(
-                "🤖 I can help you find amazing deals & answer questions about Zookout.\n\n"
-                "Examples:\n"
-                "🍽 Restaurant in Mumbai\n"
-                "💆 Spa under ₹1000\n"
-                "💇 Salon in Andheri\n"
-                "🍺 Pub in Bandra"
-            )
+            await help_handler(update, context)
+            return
+
+        # Priority 4: General Questions / FAQ
+        if raw_intent["type"] == "faq":
+            await update.message.reply_text(raw_intent["faq_answer"])
             return
 
         if raw_intent["type"] == "thanks":
@@ -275,14 +359,23 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        if raw_intent["type"] == "faq":
-            await update.message.reply_text(raw_intent["faq_answer"])
+        # Priority 5: Day Planner Intent
+        if raw_intent["type"] == "planner":
+            await planner_handler(update, context, raw_intent)
             return
 
-        # Step 2: Merge search intent with conversation memory
-        intent = memory_manager.update_context(user_id, raw_intent)
+        # Priority 6: Recommendation Intent (Explicit Only)
+        if raw_intent["type"] == "personalized":
+            await personalized_recommendations_handler(update, context)
+            return
 
-        # Step 3: Automatically learn user profile from search intent
+        # Priority 8: Fallback Intent
+        if raw_intent["type"] == "fallback":
+            await fallback_handler(update, context)
+            return
+
+        # Priority 7: Search Intent
+        intent = memory_manager.update_context(user_id, raw_intent)
         if intent["type"] == "search":
             profile_manager.update_profile_from_intent(user_id, intent)
 
@@ -290,7 +383,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("Message:", message)
         print("Merged Intent:", intent)
 
-        # Step 4: Search deals using Recommendation Engine
+        # Search deals using Recommendation Engine
         results = search_deals(intent)
 
         if not results:
@@ -332,14 +425,11 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             return
 
-        # Cache active search results for pagination
         USER_SEARCH_CACHE[user_id] = results
 
-        # Interactive UI: Best Match + Inline Keyboards + Pagination
         best_match = results[0]
         other_matches = results[1:4]
 
-        # Add to recently viewed history
         for d in results[:4]:
             profile_manager.add_recently_viewed(user_id, d)
 
@@ -376,7 +466,6 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 keyboard = build_deal_keyboard(deal)
                 await update.message.reply_text(reply, reply_markup=keyboard, disable_web_page_preview=True)
 
-        # Pagination Button if > 4 results exist
         if len(results) > 4:
             p_keyboard = build_pagination_keyboard(offset=4)
             await update.message.reply_text(
@@ -406,6 +495,7 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_handler))
     app.add_handler(CommandHandler("favourites", favourites_handler))
     app.add_handler(CommandHandler("clear_favourites", clear_favourites_handler))
     app.add_handler(CommandHandler("history", recently_viewed_handler))
@@ -415,7 +505,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Greeting Intent Separation...")
+    print("[OK] Zookout AI Bot is running with Prioritized Intent Router...")
     app.run_polling()
 
 

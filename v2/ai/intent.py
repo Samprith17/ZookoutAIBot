@@ -26,7 +26,6 @@ CATEGORY_KEYWORDS = {
     "family": ["family", "outing"]
 }
 
-# Occasions
 OCCASIONS = {
     "romantic": ["romantic", "candle light", "date night", "romantic dinner"],
     "birthday": ["birthday", "bday", "b-day", "birthday celebration"],
@@ -40,7 +39,6 @@ OCCASIONS = {
     "kids": ["kids", "children", "child"]
 }
 
-# Preferences
 PREFERENCES = {
     "rooftop": ["rooftop", "roof top", "sky lounge", "terrace"],
     "buffet": ["buffet", "all you can eat"],
@@ -59,7 +57,6 @@ PREFERENCES = {
     "desserts": ["dessert", "desserts", "cake", "ice cream"]
 }
 
-# Time Filters & Temporal Expressions
 TIME_FILTERS = {
     "tonight": ["tonight", "this evening"],
     "today": ["today"],
@@ -74,21 +71,21 @@ TIME_FILTERS = {
     "late night": ["late night"]
 }
 
-# Supported Locations
 LOCATIONS = [
     "andheri", "bandra", "powai", "juhu", "thane", "borivali", "mumbai", "dadar", "worli", "lower parel", "malad", "vashi"
 ]
 
 GREETINGS = [
-    "start", "/start", "hi", "hello", "hey", "good morning", "good afternoon", "good evening",
-    "how are you", "hi there", "hello bot", "greetings"
+    "hi", "hello", "hey", "hi there", "hello bot", "good morning",
+    "good afternoon", "good evening", "good night", "how are you", "what's up", "greetings"
 ]
 
+HELP_WORDS = ["help", "what can you do", "show commands", "guide me", "menu", "/help"]
+
 PERSONALIZED_WORDS = [
-    "recommend something", "what should i do today?", "suggest deals",
-    "personalized recommendations", "recommended for me", "any recommendations",
-    "any recommendations?", "recommend a restaurant", "suggest a spa", "plan my saturday",
-    "recommend deals", "suggest something"
+    "recommend something", "suggest a deal", "suggest deals", "recommend a restaurant",
+    "any recommendations", "any recommendations?", "what should i do today",
+    "best deals today", "suggest a spa", "personalized recommendations", "recommended for me"
 ]
 
 RECENT_WORDS = ["recent", "recently viewed", "history", "/history"]
@@ -97,16 +94,17 @@ RESET_PROFILE_WORDS = ["reset profile", "forget my preferences", "clear history"
 FAVOURITES_WORDS = ["my favourites", "favorites", "saved deals", "favourites", "/favourites"]
 CLEAR_FAVOURITES_WORDS = ["clear favourites", "delete favourites", "/clear_favourites"]
 
-HELP_WORDS = ["help", "support", "what can you do", "how to use"]
-THANKS = ["thanks", "thank you", "thx", "cheers"]
-BYE = ["bye", "goodbye", "see you"]
+PLANNER_KEYWORDS = [
+    "plan my saturday", "plan my sunday", "weekend plan", "date night plan",
+    "family outing", "plan my weekend", "day planner", "plan my day"
+]
 
 FAQ_QUESTIONS = {
-    "what is zookout": "Zookout is India's premier local experiences platform, offering top deals for dining, spas, salons, entertainment, and getaways!",
-    "how to book": "You can discover deals on Zookout, select your preferred voucher, and complete the booking directly online or through our app.",
-    "how do vouchers work": "After purchasing a voucher on Zookout, show your voucher code or QR code at the merchant venue upon arrival.",
-    "cancellation": "Cancellation policies depend on the specific deal terms. Please check the deal voucher details before booking.",
-    "payment methods": "We accept UPI, Credit/Debit cards, Net Banking, and major mobile wallets."
+    "who are you": "🤖 I am Zookout AI, your intelligent virtual assistant for discovering local deals, dining, spas, salons, and activities across India!",
+    "what is zookout": "Zookout is India's local experiences platform offering the best deals for restaurants, cafes, spas, salons, hotels, and events!",
+    "how do you work": "I can help you search for deals by category, budget, or location, save your favourites, and give personalized recommendations!",
+    "can you help me": "Yes! You can search for restaurants, spas, cafes, or hotels, ask for recommendations, or plan your weekend itinerary!",
+    "what is this bot": "🤖 I am Zookout AI, your official assistant for local experiences and discount deals!"
 }
 
 OUT_OF_SCOPE_KEYWORDS = [
@@ -116,13 +114,13 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    Advanced Multi-Constraint Natural Language Intent Parser (Milestone 6.3).
-    Strictly separates Greeting Intents from Recommendation Intents.
+    Intelligent Intent Classifier (Milestone 6.3 Prioritized Architecture).
+    Priority: 1. Commands -> 2. Greetings -> 3. Help -> 4. General Questions -> 5. Day Planner -> 6. Recommendations -> 7. Search -> 8. Fallback
     """
     text = (message or "").lower().strip()
 
     intent = {
-        "type": "search",
+        "type": "fallback",
         "category": None,
         "city": None,
         "area": None,
@@ -141,27 +139,13 @@ def detect_intent(message: str) -> Dict[str, Any]:
         "query": message,
     }
 
-    # 1. Recommendation Intent Check (High Priority)
-    if any(pw in text for pw in PERSONALIZED_WORDS):
-        intent["type"] = "personalized"
-        return intent
-
-    # 2. Greeting Intent Check (High Priority - Never returns deals)
-    if any(text == g or text.startswith(g + " ") or text.endswith(" " + g) or g in text for g in GREETINGS):
+    # 1. Commands (Highest Priority)
+    if text in ["/start", "start"]:
         intent["type"] = "greeting"
         return intent
 
-    # 3. System Commands Check
     if text in RECENT_WORDS:
         intent["type"] = "recent"
-        return intent
-
-    if text in PROFILE_WORDS:
-        intent["type"] = "profile"
-        return intent
-
-    if text in RESET_PROFILE_WORDS:
-        intent["type"] = "reset_profile"
         return intent
 
     if text in FAVOURITES_WORDS:
@@ -172,36 +156,54 @@ def detect_intent(message: str) -> Dict[str, Any]:
         intent["type"] = "clear_favourites"
         return intent
 
-    if text in HELP_WORDS:
+    if text in PROFILE_WORDS:
+        intent["type"] = "profile"
+        return intent
+
+    if text in RESET_PROFILE_WORDS:
+        intent["type"] = "reset_profile"
+        return intent
+
+    # 2. Greetings Intent
+    if any(text == g or text.startswith(g + " ") or text.endswith(" " + g) for g in GREETINGS):
+        intent["type"] = "greeting"
+        return intent
+
+    # 3. Help Intent
+    if any(h in text for h in HELP_WORDS):
         intent["type"] = "help"
         return intent
 
-    if text in THANKS:
-        intent["type"] = "thanks"
-        return intent
-
-    if text in BYE:
-        intent["type"] = "bye"
-        return intent
-
-    if any(re.search(r"\b" + re.escape(word) + r"\b", text) for word in OUT_OF_SCOPE_KEYWORDS):
-        intent["type"] = "out_of_scope"
-        return intent
-
+    # 4. General Questions / FAQ
     for faq_key, answer in FAQ_QUESTIONS.items():
         if faq_key in text:
             intent["type"] = "faq"
             intent["faq_answer"] = answer
             return intent
 
-    # 4. Category Extraction
+    # 5. Day Planner Intent
+    if any(pk in text for pk in PLANNER_KEYWORDS) or ("plan" in text and ("saturday" in text or "sunday" in text or "weekend" in text or "date" in text or "family" in text)):
+        intent["type"] = "planner"
+        max_match = re.search(r"(?:under|below|less than|budget of)\s*₹?\s*(\d+)", text)
+        if max_match:
+            intent["max_price"] = int(max_match.group(1))
+        return intent
+
+    # 6. Recommendation Intent
+    if any(rk in text for rk in PERSONALIZED_WORDS):
+        intent["type"] = "personalized"
+        return intent
+
+    # 7. Search Intent Extraction
+    category_found = False
     sorted_categories = sorted(CATEGORY_KEYWORDS.items(), key=lambda x: max(len(k) for k in x[1]), reverse=True)
     for category, keywords in sorted_categories:
         if any(re.search(r"\b" + re.escape(keyword) + r"\b", text) for keyword in keywords):
             intent["category"] = category
+            category_found = True
             break
 
-    # 5. Location & Area Extraction
+    location_found = False
     for loc in LOCATIONS:
         if loc in text:
             intent["location"] = loc.title()
@@ -210,43 +212,23 @@ def detect_intent(message: str) -> Dict[str, Any]:
             else:
                 intent["area"] = loc.title()
                 intent["city"] = "Mumbai"
+            location_found = True
             break
 
-    # 6. Occasion Extraction
+    # Occasions
     for occasion, keywords in OCCASIONS.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
             intent["occasion"] = occasion
             break
 
-    # 7. Preference Extraction
+    # Preferences
     extracted_prefs = []
     for pref, keywords in PREFERENCES.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
             extracted_prefs.append(pref)
     intent["preferences"] = extracted_prefs
 
-    # 8. Time Filter & Day Extraction
-    extracted_times = []
-    for t_filter, keywords in TIME_FILTERS.items():
-        if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
-            extracted_times.append(t_filter)
-    if extracted_times:
-        intent["time_filter"] = extracted_times[0]
-        if "tonight" in extracted_times or "today" in extracted_times:
-            intent["day"] = "today"
-        elif "tomorrow" in extracted_times:
-            intent["day"] = "tomorrow"
-
-    # 9. Group Size Extraction
-    gs_match = re.search(r"(?:for|group of)\s*(\d+)", text)
-    if gs_match:
-        intent["group_size"] = int(gs_match.group(1))
-    elif "couple" in text:
-        intent["group_size"] = 2
-    elif "solo" in text:
-        intent["group_size"] = 1
-
-    # 10. Budget Range & Max Price Extraction
+    # Budget Range & Max Price
     range_match = re.search(r"(?:between|from)?\s*₹?\s*(\d+)\s*(?:and|to|-)\s*₹?\s*(\d+)", text)
     if range_match:
         intent["min_price"] = int(range_match.group(1))
@@ -256,7 +238,17 @@ def detect_intent(message: str) -> Dict[str, Any]:
         if max_match:
             intent["max_price"] = int(max_match.group(1))
 
-    logger.info(f"[NLU Extracted Intent]: {intent}")
-    print("[NLU Debug Intent]:", intent)
+    budget_found = intent["max_price"] is not None or intent["min_price"] is not None
 
+    if category_found or location_found or budget_found or intent["occasion"] or intent["preferences"]:
+        intent["type"] = "search"
+        return intent
+
+    if any(re.search(r"\b" + re.escape(word) + r"\b", text) for word in OUT_OF_SCOPE_KEYWORDS):
+        intent["type"] = "out_of_scope"
+        return intent
+
+    # 8. Fallback Intent
+    intent["type"] = "fallback"
+    logger.info(f"[NLU Extracted Intent]: {intent}")
     return intent
