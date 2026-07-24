@@ -79,9 +79,19 @@ LOCATIONS = [
     "andheri", "bandra", "powai", "juhu", "thane", "borivali", "mumbai", "dadar", "worli", "lower parel", "malad", "vashi"
 ]
 
-GREETINGS = ["start", "/start", "hi", "hello", "hey", "good morning", "good afternoon", "good evening"]
+GREETINGS = [
+    "start", "/start", "hi", "hello", "hey", "good morning", "good afternoon", "good evening",
+    "how are you", "hi there", "hello bot", "greetings"
+]
+
+PERSONALIZED_WORDS = [
+    "recommend something", "what should i do today?", "suggest deals",
+    "personalized recommendations", "recommended for me", "any recommendations",
+    "any recommendations?", "recommend a restaurant", "suggest a spa", "plan my saturday",
+    "recommend deals", "suggest something"
+]
+
 RECENT_WORDS = ["recent", "recently viewed", "history", "/history"]
-PERSONALIZED_WORDS = ["recommend something", "what should i do today?", "suggest deals", "personalized recommendations", "recommended for me"]
 PROFILE_WORDS = ["my preferences", "my profile", "show my interests", "/profile"]
 RESET_PROFILE_WORDS = ["reset profile", "forget my preferences", "clear history", "/reset_profile"]
 FAVOURITES_WORDS = ["my favourites", "favorites", "saved deals", "favourites", "/favourites"]
@@ -106,8 +116,8 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    Advanced Multi-Constraint Natural Language Intent Parser (Milestone 6.1).
-    Extracts category, city, area, location, budget, occasion, preferences, group size, time filter, and command intent types.
+    Advanced Multi-Constraint Natural Language Intent Parser (Milestone 6.3).
+    Strictly separates Greeting Intents from Recommendation Intents.
     """
     text = (message or "").lower().strip()
 
@@ -131,16 +141,19 @@ def detect_intent(message: str) -> Dict[str, Any]:
         "query": message,
     }
 
-    if text in GREETINGS:
+    # 1. Recommendation Intent Check (High Priority)
+    if any(pw in text for pw in PERSONALIZED_WORDS):
+        intent["type"] = "personalized"
+        return intent
+
+    # 2. Greeting Intent Check (High Priority - Never returns deals)
+    if any(text == g or text.startswith(g + " ") or text.endswith(" " + g) or g in text for g in GREETINGS):
         intent["type"] = "greeting"
         return intent
 
+    # 3. System Commands Check
     if text in RECENT_WORDS:
         intent["type"] = "recent"
-        return intent
-
-    if text in PERSONALIZED_WORDS:
-        intent["type"] = "personalized"
         return intent
 
     if text in PROFILE_WORDS:
@@ -181,14 +194,14 @@ def detect_intent(message: str) -> Dict[str, Any]:
             intent["faq_answer"] = answer
             return intent
 
-    # 1. Category Extraction (Prioritizing multi-word keywords)
+    # 4. Category Extraction
     sorted_categories = sorted(CATEGORY_KEYWORDS.items(), key=lambda x: max(len(k) for k in x[1]), reverse=True)
     for category, keywords in sorted_categories:
         if any(re.search(r"\b" + re.escape(keyword) + r"\b", text) for keyword in keywords):
             intent["category"] = category
             break
 
-    # 2. Location & Area Extraction
+    # 5. Location & Area Extraction
     for loc in LOCATIONS:
         if loc in text:
             intent["location"] = loc.title()
@@ -199,20 +212,20 @@ def detect_intent(message: str) -> Dict[str, Any]:
                 intent["city"] = "Mumbai"
             break
 
-    # 3. Occasion Extraction
+    # 6. Occasion Extraction
     for occasion, keywords in OCCASIONS.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
             intent["occasion"] = occasion
             break
 
-    # 4. Preference Extraction
+    # 7. Preference Extraction
     extracted_prefs = []
     for pref, keywords in PREFERENCES.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
             extracted_prefs.append(pref)
     intent["preferences"] = extracted_prefs
 
-    # 5. Time Filter & Day Extraction
+    # 8. Time Filter & Day Extraction
     extracted_times = []
     for t_filter, keywords in TIME_FILTERS.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
@@ -224,7 +237,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
         elif "tomorrow" in extracted_times:
             intent["day"] = "tomorrow"
 
-    # 6. Group Size Extraction
+    # 9. Group Size Extraction
     gs_match = re.search(r"(?:for|group of)\s*(\d+)", text)
     if gs_match:
         intent["group_size"] = int(gs_match.group(1))
@@ -233,7 +246,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
     elif "solo" in text:
         intent["group_size"] = 1
 
-    # 7. Budget Range & Max Price Extraction
+    # 10. Budget Range & Max Price Extraction
     range_match = re.search(r"(?:between|from)?\s*₹?\s*(\d+)\s*(?:and|to|-)\s*₹?\s*(\d+)", text)
     if range_match:
         intent["min_price"] = int(range_match.group(1))

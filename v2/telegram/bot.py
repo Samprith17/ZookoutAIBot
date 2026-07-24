@@ -33,37 +33,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     memory_manager.clear_context(user_id)
     first_name = update.effective_user.first_name if update.effective_user else "there"
 
-    profile = profile_manager.get_profile(user_id)
-    if profile["search_count"] > 0 and profile["categories"]:
-        top_cat = profile["categories"].most_common(1)[0][0]
-        avg_b = int(sum(profile["budgets"]) / len(profile["budgets"])) if profile["budgets"] else None
-        b_str = f" under ₹{avg_b}" if avg_b else ""
-
-        await update.message.reply_text(
-            f"👋 Welcome back {first_name}!\n\n"
-            f"You usually look for {top_cat}{b_str}.\n"
-            "Here are your personalized deal recommendations for today:"
-        )
-        await personalized_recommendations_handler(update, context)
-        return
-
     await update.message.reply_text(
-        f"👋 Welcome to Zookout AI, {first_name}!\n\n"
-        "I can help you discover amazing local deals and experiences.\n\n"
-        "Examples:\n"
+        f"👋 Hello {first_name}!\n\n"
+        "I'm Zookout AI.\n\n"
+        "I can help you discover amazing deals.\n\n"
+        "You can ask things like:\n"
         "🍽 Restaurant in Mumbai\n"
         "💆 Spa under ₹1000\n"
-        "💇 Salon in Andheri\n"
         "☕ Cafe below ₹500\n"
-        "🍺 Pub in Bandra\n"
-        "🏨 Hotel in Mumbai\n"
-        "🎟 Adventure activities\n\n"
-        "Commands:\n"
-        "🌟 Recommend something\n"
-        "❤️ My Favourites\n"
-        "📜 Recently viewed\n"
-        "👤 My preferences\n"
-        "🗑️ Reset profile"
+        "🏨 Luxury hotel\n"
+        "🎉 Birthday celebration\n\n"
+        "or try asking:\n"
+        "🌟 \"Recommend something\""
     )
 
 
@@ -239,7 +220,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 6.1 Strict Intent Command Routing (Bypasses Search Pipeline)
+        # Milestone 6.3 Greeting & Command Intent Separation (Greeting Never Returns Deals!)
         if raw_intent["type"] == "greeting":
             await start(update, context)
             return
@@ -434,7 +415,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Strict Intent Command Routing...")
+    print("[OK] Zookout AI Bot is running with Greeting Intent Separation...")
     app.run_polling()
 
 
