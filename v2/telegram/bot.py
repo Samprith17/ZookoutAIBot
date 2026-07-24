@@ -45,10 +45,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎯 Activities\n\n"
         "Try asking:\n"
         "• Restaurant in Mumbai\n"
-        "• Compare restaurants in Mumbai\n"
-        "• Spa under ₹1000\n"
-        "• Cafe in Bandra\n"
-        "• Recommend something\n"
+        "• I want a romantic dinner\n"
+        "• Birthday under ₹2000\n"
+        "• Relax today\n"
+        "• Compare restaurants\n"
         "• Plan my Saturday"
     )
 
@@ -59,6 +59,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "I can help you discover, compare, and book local deals across India!\n\n"
         "Available Features & Commands:\n"
         "🍽️ Restaurant & Cafe Deals\n"
+        "❤️ Smart Occasion & Mood Recommendations (`Romantic Dinner`, `Birthday`, `Relax today`)\n"
         "📊 AI Smart Deal Comparison (`Compare restaurants`)\n"
         "💆 Spa & Salon Offers\n"
         "🏨 Hotel & Resort Staycations\n"
@@ -68,21 +69,84 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🌟 Personal Recommendations (`Recommend something`)\n"
         "🗓️ AI Day Planner (`Plan my Saturday under ₹2000`)\n\n"
         "Try typing:\n"
-        "• Compare restaurants in Mumbai\n"
-        "• Best restaurant under ₹1000\n"
-        "• Spa under ₹1000\n"
-        "• Cafe in Bandra\n"
-        "• Recommend something\n"
-        "• Plan my Saturday"
+        "• I want a romantic dinner\n"
+        "• Birthday under ₹2000\n"
+        "• Relax today\n"
+        "• Coffee with friends\n"
+        "• Business lunch under ₹1000"
     )
 
 
+async def occasion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_intent: dict):
+    """
+    Smart Occasion & Mood Recommendation Handler (Milestone 8).
+    Displays Occasion Badge, Best Match with occasion reasoning, and top suitable recommendations.
+    """
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    intent = memory_manager.update_context(user_id, raw_intent)
+    profile_manager.update_profile_from_intent(user_id, intent)
+
+    results = search_deals(intent)
+    if not results:
+        fallback_intent = dict(intent)
+        fallback_intent["max_price"] = None
+        fallback_intent["location"] = None
+        results = search_deals(fallback_intent)
+
+    if not results:
+        await update.message.reply_text("I couldn't find deals matching that occasion right now. Try searching for a specific venue or location!")
+        return
+
+    USER_SEARCH_CACHE[user_id] = results
+    best_match = results[0]
+    other_matches = results[1:4]
+
+    for d in results[:4]:
+        profile_manager.add_recently_viewed(user_id, d)
+
+    occ_title = intent.get("occasion") or "Special Occasion"
+    reasons_text = ""
+    for reason in best_match.get("reasons", []):
+        reasons_text += f"• {reason}\n"
+
+    best_reply = (
+        f"❤️ Occasion Detected:\n{occ_title}\n\n"
+        "⭐ Best Match\n\n"
+        f"🏷️ Brand: {best_match.get('brand', 'N/A')}\n"
+        f"📂 Category: {best_match.get('display_category', 'N/A')}\n"
+        f"📝 Offer: {best_match.get('clean_title')}\n"
+        f"💰 Price: {best_match.get('formatted_price', 'Price not available')}\n"
+        f"🎁 Discount: {best_match.get('discount_percent', 0)}%\n"
+        f"📍 Location: {best_match.get('display_location')}\n\n"
+        "Why this recommendation?\n"
+        f"{reasons_text}"
+    )
+    best_keyboard = build_deal_keyboard(best_match)
+    await update.message.reply_text(best_reply, reply_markup=best_keyboard, disable_web_page_preview=True)
+
+    if other_matches:
+        await update.message.reply_text("━━━━━━━━━━━━━━━━━━\n\n🎯 Other Occasion Recommendations:")
+        for deal in other_matches:
+            reply = (
+                f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
+                f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+                f"📝 Offer: {deal.get('clean_title')}\n"
+                f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
+                f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+                f"📍 Location: {deal.get('display_location')}\n"
+            )
+            keyboard = build_deal_keyboard(deal)
+            await update.message.reply_text(reply, reply_markup=keyboard, disable_web_page_preview=True)
+
+    if len(results) > 4:
+        p_keyboard = build_pagination_keyboard(offset=4)
+        await update.message.reply_text(
+            f"Showing deals 1-{min(4, len(results))} of {len(results)}. Click below for more!",
+            reply_markup=p_keyboard,
+        )
+
+
 async def compare_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_intent: dict):
-    """
-    AI Smart Deal Comparison Engine (Milestone 7).
-    Compares up to 5 deals evaluating Brand, Category, Offer, Price, Discount, Location,
-    and highlights Best Overall, Cheapest, and Highest Discount.
-    """
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
     intent = memory_manager.update_context(user_id, raw_intent)
 
@@ -188,10 +252,10 @@ async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 I'm not sure what you mean.\n\n"
         "You can ask me things like:\n"
-        "• Compare restaurants in Mumbai\n"
-        "• Restaurant in Mumbai\n"
-        "• Spa under ₹1000\n"
-        "• Recommend something\n"
+        "• I want a romantic dinner\n"
+        "• Birthday under ₹2000\n"
+        "• Relax today\n"
+        "• Compare restaurants\n"
         "• Plan my Saturday"
     )
 
@@ -368,7 +432,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 7 Priority Router
+        # Milestone 8 Priority Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
             return
@@ -416,7 +480,11 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Milestone 7 Comparison Handler
+        # Milestone 8 Occasion Handler
+        if raw_intent["type"] == "occasion":
+            await occasion_handler(update, context, raw_intent)
+            return
+
         if raw_intent["type"] == "compare":
             await compare_handler(update, context, raw_intent)
             return
@@ -506,9 +574,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(
                     "I couldn't find an exact match.\n\n"
                     "Try searching for:\n"
-                    "• Compare restaurants in Mumbai\n"
-                    "• Restaurant in Mumbai\n"
-                    "• Spa under ₹1000\n"
+                    "• I want a romantic dinner\n"
+                    "• Birthday under ₹2000\n"
+                    "• Relax today\n"
                     "• Cafe below ₹500"
                 )
             return
@@ -593,7 +661,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Smart Deal Comparison Engine...")
+    print("[OK] Zookout AI Bot is running with Smart Occasion Engine...")
     app.run_polling()
 
 
