@@ -702,9 +702,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if intent["type"] == "search":
             profile_manager.update_profile_from_intent(user_id, intent)
 
-        print("User ID:", user_id)
-        print("Message:", message)
-        print("Merged Intent:", intent)
+        logger.info(f"User ID: {user_id} | Message: {message} | Merged Intent: {intent}")
 
         results = search_deals(intent)
 
