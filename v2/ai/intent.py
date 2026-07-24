@@ -26,7 +26,7 @@ CATEGORY_KEYWORDS = {
     "family": ["family", "outing"]
 }
 
-# Milestone 8 & 9 & 10 Occasion & Mood Mapping
+# Milestone 8 & 9 & 10 & 11 Occasion & Mood Mapping
 OCCASION_MAP = {
     "Romantic Evening": (["romantic", "candle light", "date night", "romantic dinner", "romantic evening", "anniversary", "date"], "restaurant"),
     "Birthday Celebration": (["birthday", "bday", "b-day", "birthday celebration", "celebrate promotion", "celebrate success", "celebrate"], "restaurant"),
@@ -34,7 +34,7 @@ OCCASION_MAP = {
     "Coffee & Cafe Meetup": (["coffee meeting", "coffee with friends", "cafe meetup"], "cafe"),
     "Business Lunch & Meeting": (["business meeting", "business lunch", "corporate meeting", "formal meeting"], "restaurant"),
     "Family Outing & Dinner": (["family dinner", "family lunch", "family outing", "kids outing"], "restaurant"),
-    "Friends Meetup": (["friends meetup", "weekend with friends", "friends", "hangout", "get together"], "cafe")
+    "Friends Meetup": (["friends meetup", "weekend with friends", "weekend outing", "friends", "hangout", "get together"], "cafe")
 }
 
 PREFERENCES = {
@@ -53,20 +53,6 @@ PREFERENCES = {
     "cocktails": ["cocktail", "cocktails", "drinks", "bar"],
     "coffee": ["coffee", "brew", "cappuccino", "espresso"],
     "desserts": ["dessert", "desserts", "cake", "ice cream"]
-}
-
-TIME_FILTERS = {
-    "tonight": ["tonight", "this evening"],
-    "today": ["today"],
-    "tomorrow": ["tomorrow"],
-    "weekend": ["weekend", "saturday", "sunday"],
-    "lunch": ["lunch", "afternoon meal"],
-    "dinner": ["dinner", "night meal"],
-    "breakfast": ["breakfast", "morning meal"],
-    "evening": ["evening"],
-    "morning": ["morning"],
-    "afternoon": ["afternoon"],
-    "late night": ["late night"]
 }
 
 LOCATIONS = [
@@ -98,7 +84,7 @@ PAGINATION_WORDS = [
 ]
 
 PLANNER_TRIGGERS = [
-    "plan", "create", "organize", "build", "itinerary", "schedule", "planner", "weekend with friends"
+    "plan", "create", "organize", "build", "itinerary", "schedule", "planner"
 ]
 
 RECENT_WORDS = ["recent", "recently viewed", "history", "/history"]
@@ -122,7 +108,8 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    Intelligent Intent Classifier (Milestone 10 Preference Learning Priority Router).
+    AI Concierge 2.0 Multi-Constraint Classifier (Milestone 11).
+    Extracts Category, Budget, Location, Area, Occasion, Date, Time, Group Size, and Meal Type.
     """
     text = (message or "").lower().strip()
 
@@ -141,6 +128,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
         "time": None,
         "day": None,
         "time_filter": None,
+        "meal_type": None,
         "special_keywords": [],
         "faq_answer": None,
         "query": message,
@@ -188,13 +176,57 @@ def detect_intent(message: str) -> Dict[str, Any]:
             intent["faq_answer"] = answer
             return intent
 
-    # Extract Category, Location, Budget Parameters
+    # Milestone 11 Parameter Extraction
+    # Extract Date
+    if "today" in text:
+        intent["date"] = "today"
+    elif "tomorrow" in text:
+        intent["date"] = "tomorrow"
+    elif "saturday" in text:
+        intent["date"] = "saturday"
+    elif "sunday" in text:
+        intent["date"] = "sunday"
+    elif "weekend" in text:
+        intent["date"] = "this weekend"
+
+    # Extract Time Filter
+    if "morning" in text:
+        intent["time_filter"] = "morning"
+    elif "afternoon" in text:
+        intent["time_filter"] = "afternoon"
+    elif "evening" in text:
+        intent["time_filter"] = "evening"
+    elif "tonight" in text:
+        intent["time_filter"] = "tonight"
+    elif "late night" in text:
+        intent["time_filter"] = "late night"
+
+    # Extract Meal Type
+    if "lunch" in text:
+        intent["meal_type"] = "lunch"
+    elif "dinner" in text:
+        intent["meal_type"] = "dinner"
+    elif "breakfast" in text:
+        intent["meal_type"] = "breakfast"
+    elif "buffet" in text:
+        intent["meal_type"] = "buffet"
+
+    # Extract Group Size
+    if "solo" in text:
+        intent["group_size"] = "solo"
+    elif "couple" in text or "for 2" in text or "for two" in text:
+        intent["group_size"] = "couple"
+    elif "family" in text or "group" in text:
+        intent["group_size"] = "family"
+
+    # Extract Category
     sorted_categories = sorted(CATEGORY_KEYWORDS.items(), key=lambda x: max(len(k) for k in x[1]), reverse=True)
     for category, keywords in sorted_categories:
         if any(re.search(r"\b" + re.escape(keyword) + r"\b", text) for keyword in keywords):
             intent["category"] = category
             break
 
+    # Extract Location / Area
     for loc in LOCATIONS:
         if loc in text:
             intent["location"] = loc.title()
@@ -205,6 +237,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
                 intent["city"] = "Mumbai"
             break
 
+    # Extract Budget
     range_match = re.search(r"(?:between|from)?\s*₹?\s*(\d+)\s*(?:and|to|-)\s*₹?\s*(\d+)", text)
     if range_match:
         intent["min_price"] = int(range_match.group(1))
@@ -258,8 +291,9 @@ def detect_intent(message: str) -> Dict[str, Any]:
 
     budget_found = intent["max_price"] is not None or intent["min_price"] is not None
     is_modifier = any(w in text for w in ["cheaper", "luxury", "premium", "budget", "only", "near", "instead"])
+    has_date_time = intent["date"] is not None or intent["time_filter"] is not None or intent["meal_type"] is not None
 
-    if intent["category"] or intent["location"] or budget_found or intent["occasion"] or intent["preferences"] or is_modifier:
+    if intent["category"] or intent["location"] or budget_found or intent["occasion"] or intent["preferences"] or is_modifier or has_date_time:
         intent["type"] = "search"
         return intent
 

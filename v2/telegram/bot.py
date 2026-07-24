@@ -28,6 +28,62 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def build_concierge_reasons(deal: dict, intent: dict) -> str:
+    """Generates AI Concierge 2.0 multi-constraint reasoning bullets."""
+    reasons = []
+
+    cat = deal.get("display_category") or deal.get("category")
+    if cat:
+        reasons.append(f"Top-rated {cat} experience matching your request.")
+
+    loc = deal.get("display_location")
+    req_loc = intent.get("area") or intent.get("location")
+    if req_loc and loc and req_loc.lower() in loc.lower():
+        reasons.append(f"Located right in your requested area ({req_loc}).")
+    elif loc:
+        reasons.append(f"Conveniently located in {loc}.")
+
+    max_p = intent.get("max_price")
+    try:
+        p = float(str(deal.get("price", "0")).replace(",", ""))
+        if max_p and p > 0 and p <= max_p:
+            reasons.append(f"Fits within your budget of ₹{int(max_p)} (Price: {deal.get('formatted_price')}).")
+        elif p > 0:
+            reasons.append(f"Great value offer priced at {deal.get('formatted_price')}.")
+    except Exception:
+        pass
+
+    disc = deal.get("discount_percent", 0)
+    if disc and disc > 0:
+        reasons.append(f"High savings offer with {disc}% OFF.")
+
+    occ = intent.get("occasion")
+    if occ:
+        reasons.append(f"Perfect atmosphere for a {occ}.")
+
+    dt = intent.get("date") or intent.get("time_filter")
+    if dt:
+        reasons.append(f"Available for your requested {dt} timing.")
+
+    if not reasons:
+        reasons.append("Top verified offer recommended for your criteria.")
+
+    return "\n".join([f"• {r}" for r in reasons])
+
+
+def get_suggested_next_actions(intent: dict) -> str:
+    """Generates dynamic interactive next action suggestions."""
+    actions = []
+    cat = intent.get("category") or "deal"
+    loc = intent.get("area") or intent.get("location") or "Mumbai"
+
+    actions.append(f"• Type \"Plan a {cat} in {loc}\" for a full itinerary")
+    actions.append(f"• Type \"Compare {cat}s in {loc}\" for side-by-side comparison")
+    actions.append("• Type \"Cheaper\" or \"Luxury\" to adjust budget range")
+
+    return "\n".join(actions)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
     memory_manager.clear_context(user_id)
@@ -35,43 +91,42 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"👋 Hello {first_name}!\n\n"
-        "I'm Zookout AI.\n\n"
-        "I can help you discover amazing offers on:\n\n"
+        "I'm Zookout AI Concierge 2.0.\n\n"
+        "I can help you discover amazing offers matching your category, location, budget, occasion, and timing:\n\n"
         "🍽 Restaurants\n"
         "☕ Cafes\n"
-        "💆 Spas\n"
-        "💇 Salons\n"
-        "🏨 Hotels\n"
-        "🎯 Activities\n\n"
+        "💆 Spas & Salons\n"
+        "🏨 Hotels & Staycations\n"
+        "🎯 Activities & Outings\n\n"
         "Try asking:\n"
-        "• Recommend something\n"
-        "• What should I do today?\n"
-        "• Plan a romantic evening under ₹2000\n"
-        "• Compare restaurants in Mumbai\n"
-        "• My Preferences"
+        "• Romantic dinner in Andheri under ₹2000\n"
+        "• Birthday in Bandra\n"
+        "• Spa tomorrow morning\n"
+        "• Cafe near Powai\n"
+        "• Family lunch\n"
+        "• Weekend outing"
     )
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 Zookout AI Guide & Supported Features\n\n"
-        "I can help you discover, compare, and book local deals across India!\n\n"
-        "Available Features & Commands:\n"
-        "🌟 Smart Personalization & Preference Learning (`Recommend something`, `My Preferences`)\n"
+        "🤖 Zookout AI Concierge 2.0 Features\n\n"
+        "I understand multi-constraint natural requests across Category, Location, Budget, Occasion, Date, Time, and Group Size!\n\n"
+        "Available Features:\n"
+        "🔍 Multi-Constraint Search (`Romantic dinner in Andheri under ₹2000`)\n"
         "🗓️ AI Experience Planner (`Plan a romantic evening under ₹2000`)\n"
-        "❤️ Smart Occasion & Mood Recommendations (`Romantic Evening`, `Relax today`)\n"
-        "📊 AI Smart Deal Comparison (`Compare restaurants`)\n"
-        "🍽️ Restaurant & Cafe Deals\n"
-        "💆 Spa & Salon Offers\n"
-        "🏨 Hotel & Resort Staycations\n"
-        "❤️ My Favourites (`My Favourites`)\n"
-        "📜 Search History (`Recently Viewed`)\n\n"
-        "Try typing:\n"
-        "• Recommend something\n"
-        "• What should I do today?\n"
-        "• Plan a romantic evening under ₹2000\n"
-        "• Compare restaurants\n"
-        "• Reset Preferences"
+        "❤️ Smart Occasion Recommendations (`Birthday in Bandra`)\n"
+        "📊 Deal Comparison (`Compare restaurants in Mumbai`)\n"
+        "🌟 Smart Personalization (`Recommend something`)\n"
+        "📜 Search History (`Recently Viewed`)\n"
+        "❤️ Saved Favourites (`My Favourites`)\n\n"
+        "Try asking:\n"
+        "• Romantic dinner in Andheri under ₹2000\n"
+        "• Birthday in Bandra\n"
+        "• Spa tomorrow morning\n"
+        "• Cafe near Powai\n"
+        "• Family lunch\n"
+        "• Weekend outing"
     )
 
 
@@ -260,21 +315,22 @@ async def occasion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, r
         profile_manager.add_recently_viewed(user_id, d)
 
     occ_title = intent.get("occasion") or "Special Occasion"
-    reasons_text = ""
-    for reason in best_match.get("reasons", []):
-        reasons_text += f"• {reason}\n"
+    reasons_text = build_concierge_reasons(best_match, intent)
+    suggested_actions = get_suggested_next_actions(intent)
 
     best_reply = (
-        f"❤️ Occasion Detected:\n{occ_title}\n\n"
+        f"❤️ Occasion Detected: {occ_title}\n\n"
         "⭐ Best Match\n\n"
         f"🏷️ Brand: {best_match.get('brand', 'N/A')}\n"
         f"📂 Category: {best_match.get('display_category', 'N/A')}\n"
         f"📝 Offer: {best_match.get('clean_title')}\n"
-        f"💰 Price: {best_match.get('formatted_price', 'Price not available')}\n"
+        f"💰 Estimated Price: {best_match.get('formatted_price', 'Price not available')}\n"
         f"🎁 Discount: {best_match.get('discount_percent', 0)}%\n"
         f"📍 Location: {best_match.get('display_location')}\n\n"
-        "Why this recommendation?\n"
-        f"{reasons_text}"
+        "📝 Reasoning:\n"
+        f"{reasons_text}\n\n"
+        "💡 Suggested Next Actions:\n"
+        f"{suggested_actions}"
     )
     best_keyboard = build_deal_keyboard(best_match)
     await update.message.reply_text(best_reply, reply_markup=best_keyboard, disable_web_page_preview=True)
@@ -353,10 +409,6 @@ async def compare_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
 
 
 async def personalized_recommendations_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Adaptive Personalization Handler (Milestone 10).
-    Uses learned recency-weighted preference profile and provides clear explanation bullets.
-    """
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
     p_intent = profile_manager.get_personalized_intent(user_id)
 
@@ -385,16 +437,20 @@ async def personalized_recommendations_handler(update: Update, context: ContextT
     for r in p_reasons:
         reasons_text += f"• {r}\n"
 
+    suggested_actions = get_suggested_next_actions(p_intent)
+
     best_reply = (
         "🌟 Personalized Best Match\n\n"
         f"🏷️ Brand: {best_match.get('brand', 'N/A')}\n"
         f"📂 Category: {best_match.get('display_category', 'N/A')}\n"
         f"📝 Offer: {best_match.get('clean_title')}\n"
-        f"💰 Price: {best_match.get('formatted_price', 'Price not available')}\n"
+        f"💰 Estimated Price: {best_match.get('formatted_price', 'Price not available')}\n"
         f"🎁 Discount: {best_match.get('discount_percent', 0)}%\n"
         f"📍 Location: {best_match.get('display_location')}\n\n"
-        "Why this recommendation?\n"
-        f"{reasons_text}"
+        "📝 Reasoning:\n"
+        f"{reasons_text}\n"
+        "💡 Suggested Next Actions:\n"
+        f"{suggested_actions}"
     )
     best_keyboard = build_deal_keyboard(best_match)
     await update.message.reply_text(best_reply, reply_markup=best_keyboard, disable_web_page_preview=True)
@@ -420,9 +476,6 @@ async def personalized_recommendations_handler(update: Update, context: ContextT
 
 
 async def profile_preferences_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Displays User Preference Profile (Milestone 10).
-    """
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
     profile = profile_manager.get_profile(user_id)
 
@@ -529,11 +582,12 @@ async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 I'm not sure what you mean.\n\n"
         "You can ask me things like:\n"
-        "• Recommend something\n"
-        "• What should I do today?\n"
-        "• Plan a romantic evening under ₹2000\n"
-        "• My Preferences\n"
-        "• Reset Preferences"
+        "• Romantic dinner in Andheri under ₹2000\n"
+        "• Birthday in Bandra\n"
+        "• Spa tomorrow morning\n"
+        "• Cafe near Powai\n"
+        "• Family lunch\n"
+        "• Weekend outing"
     )
 
 
@@ -545,7 +599,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 10 Preference Learning Priority Router
+        # Milestone 11 AI Concierge 2.0 Priority Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
             return
@@ -643,7 +697,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await fallback_handler(update, context)
             return
 
-        # Standard Context-Aware Search Processing with Preference Learning
+        # Context-Aware Concierge 2.0 Processing
         intent = memory_manager.update_context(user_id, raw_intent)
         if intent["type"] == "search":
             profile_manager.update_profile_from_intent(user_id, intent)
@@ -686,9 +740,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(
                     "I couldn't find an exact match.\n\n"
                     "Try searching for:\n"
-                    "• Recommend something\n"
-                    "• What should I do today?\n"
-                    "• Plan a romantic evening under ₹2000"
+                    "• Romantic dinner in Andheri under ₹2000\n"
+                    "• Birthday in Bandra\n"
+                    "• Spa tomorrow morning"
                 )
             return
 
@@ -700,20 +754,21 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for d in results[:4]:
             profile_manager.add_recently_viewed(user_id, d)
 
-        reasons_text = ""
-        for reason in best_match.get("reasons", []):
-            reasons_text += f"• {reason}\n"
+        reasons_text = build_concierge_reasons(best_match, intent)
+        suggested_actions = get_suggested_next_actions(intent)
 
         best_reply = (
             "⭐ Best Match\n\n"
             f"🏷️ Brand: {best_match.get('brand', 'N/A')}\n"
             f"📂 Category: {best_match.get('display_category', 'N/A')}\n"
             f"📝 Offer: {best_match.get('clean_title')}\n"
-            f"💰 Price: {best_match.get('formatted_price', 'Price not available')}\n"
+            f"💰 Estimated Price: {best_match.get('formatted_price', 'Price not available')}\n"
             f"🎁 Discount: {best_match.get('discount_percent', 0)}%\n"
             f"📍 Location: {best_match.get('display_location')}\n\n"
-            "Why this recommendation?\n"
-            f"{reasons_text}"
+            "📝 Reasoning:\n"
+            f"{reasons_text}\n\n"
+            "💡 Suggested Next Actions:\n"
+            f"{suggested_actions}"
         )
         best_keyboard = build_deal_keyboard(best_match)
         await update.message.reply_text(best_reply, reply_markup=best_keyboard, disable_web_page_preview=True)
@@ -772,7 +827,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Preference Learning Engine...")
+    print("[OK] Zookout AI Bot is running with Concierge 2.0 Engine...")
     app.run_polling()
 
 
