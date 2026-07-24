@@ -44,12 +44,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🏨 Hotels\n"
         "🎯 Activities\n\n"
         "Try asking:\n"
-        "• Restaurant in Mumbai\n"
-        "• I want a romantic dinner\n"
-        "• Birthday under ₹2000\n"
+        "• Plan a romantic evening under ₹2000\n"
+        "• Plan birthday under ₹3000\n"
+        "• Weekend with friends\n"
         "• Relax today\n"
-        "• Compare restaurants\n"
-        "• Plan my Saturday"
+        "• Business lunch\n"
+        "• Family outing"
     )
 
 
@@ -58,31 +58,191 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 Zookout AI Guide & Supported Features\n\n"
         "I can help you discover, compare, and book local deals across India!\n\n"
         "Available Features & Commands:\n"
-        "🍽️ Restaurant & Cafe Deals\n"
-        "❤️ Smart Occasion & Mood Recommendations (`Romantic Dinner`, `Birthday`, `Relax today`)\n"
+        "🗓️ AI Experience Planner (`Plan a romantic evening under ₹2000`)\n"
+        "❤️ Smart Occasion & Mood Recommendations (`Romantic Evening`, `Relax today`)\n"
         "📊 AI Smart Deal Comparison (`Compare restaurants`)\n"
+        "🍽️ Restaurant & Cafe Deals\n"
         "💆 Spa & Salon Offers\n"
         "🏨 Hotel & Resort Staycations\n"
         "🎯 Entertainment & Water Parks\n"
         "❤️ My Favourites (`My Favourites`)\n"
         "📜 Search History (`Recently Viewed`)\n"
-        "🌟 Personal Recommendations (`Recommend something`)\n"
-        "🗓️ AI Day Planner (`Plan my Saturday under ₹2000`)\n\n"
+        "🌟 Personal Recommendations (`Recommend something`)\n\n"
         "Try typing:\n"
-        "• I want a romantic dinner\n"
-        "• Birthday under ₹2000\n"
+        "• Plan a romantic evening under ₹2000\n"
+        "• Plan birthday under ₹3000\n"
+        "• Weekend with friends\n"
         "• Relax today\n"
-        "• Coffee with friends\n"
-        "• Business lunch under ₹1000"
+        "• Business lunch\n"
+        "• Family outing"
     )
 
 
-async def occasion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_intent: dict):
+async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_intent: dict):
     """
-    Smart Occasion & Mood Recommendation Handler (Milestone 8).
-    Displays Occasion Badge, Best Match with occasion reasoning, and top suitable recommendations.
+    AI Experience Planner Engine (Milestone 9).
+    Generates a complete multi-step itinerary matching Occasion, Budget, Location, Time, and Group Type.
+    Includes budget management (Total Cost, Remaining Budget) and brand de-duplication.
     """
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    intent = memory_manager.update_context(user_id, raw_intent)
+    profile_manager.update_profile_from_intent(user_id, intent)
+
+    user_query = (intent.get("query") or "").lower()
+    max_price = intent.get("max_price")
+    occasion = (intent.get("occasion") or "").lower()
+
+    # Identify Experience Blueprint from Occasion / Query Context
+    if "romantic" in occasion or "romantic" in user_query or "date" in user_query:
+        exp_title = "Romantic Evening"
+        steps = [
+            ("🌅 Afternoon Relaxation & Cafe", ["spa", "cafe"], 0.4),
+            ("🌙 Evening Fine Dining", ["restaurant"], 0.6),
+        ]
+        fit_reason = "Selected for an intimate romantic evening combining relaxation, high-discount fine dining, and memorable ambience."
+
+    elif "birthday" in occasion or "birthday" in user_query or "celebrate" in user_query:
+        exp_title = "Birthday Celebration"
+        steps = [
+            ("🎉 Afternoon Fun & Activity", ["entertainment", "gaming", "water park", "cafe"], 0.4),
+            ("🌙 Birthday Feast & Dinner", ["restaurant"], 0.6),
+        ]
+        fit_reason = "Curated for a festive birthday celebration featuring exciting activities and top-rated group dining."
+
+    elif "family" in occasion or "family" in user_query or "kids" in user_query:
+        exp_title = "Family Outing"
+        steps = [
+            ("👨‍👩‍👧‍👦 Family Fun & Entertainment", ["water park", "adventure", "gaming", "entertainment"], 0.5),
+            ("🍽️ Family Feast & Dining", ["restaurant"], 0.5),
+        ]
+        fit_reason = "Balanced for family enjoyment with engaging activities and spacious family dining venues."
+
+    elif "friend" in occasion or "friend" in user_query or "friends" in user_query:
+        exp_title = "Weekend with Friends"
+        steps = [
+            ("🎯 Afternoon Activity & Hangout", ["gaming", "adventure", "cafe"], 0.4),
+            ("🍹 Evening Pub & Drinks", ["pub", "bar", "restaurant"], 0.6),
+        ]
+        fit_reason = "Designed for a lively group hangout with fun activities and evening food & drinks."
+
+    elif "business" in occasion or "business" in user_query:
+        exp_title = "Business Meeting & Lunch"
+        steps = [
+            ("☕ Morning Coffee & Strategy", ["cafe"], 0.3),
+            ("💼 Formal Business Lunch", ["restaurant"], 0.7),
+        ]
+        fit_reason = "Optimized for professional discussions in quiet, executive dining and cafe venues."
+
+    elif "relax" in occasion or "relax" in user_query or "massage" in user_query or "wellness" in user_query:
+        exp_title = "Relaxation & Wellness Day"
+        steps = [
+            ("💆 Spa Therapy & Wellness", ["spa"], 0.6),
+            ("☕ Relaxing Tea & Cafe", ["cafe"], 0.4),
+        ]
+        fit_reason = "Tailored for complete body and mind rejuvenation with premium spa therapy followed by relaxing cafe beverages."
+
+    elif "adventure" in occasion or "adventure" in user_query:
+        exp_title = "Adventure Outing"
+        steps = [
+            ("🧗 Outdoor & Thrill Activity", ["adventure", "water park", "gaming"], 0.6),
+            ("🍽️ Post-Adventure Dining", ["restaurant", "pub"], 0.4),
+        ]
+        fit_reason = "Packed with high-energy activities followed by satisfying post-adventure dining."
+
+    else:
+        exp_title = "Weekend Experience"
+        steps = [
+            ("🌅 Afternoon Activity", ["spa", "cafe", "entertainment"], 0.4),
+            ("🌙 Evening Dining", ["restaurant", "pub"], 0.6),
+        ]
+        fit_reason = "A well-rounded weekend experience combining daytime leisure and evening dining."
+
+    # Execute step searches with Budget Management and Brand De-duplication
+    itinerary_items = []
+    total_cost = 0.0
+    used_brands = set()
+
+    for step_header, step_cats, weight in steps:
+        step_max_price = (max_price * weight) if max_price else None
+
+        selected_deal = None
+        for cat in step_cats:
+            step_intent = {
+                "type": "search",
+                "category": cat,
+                "city": intent.get("city") or "Mumbai",
+                "location": intent.get("location"),
+                "area": intent.get("area"),
+                "max_price": step_max_price,
+            }
+            candidate_deals = search_deals(step_intent)
+            candidate_deals = [d for d in candidate_deals if d.get("brand") not in used_brands]
+
+            if candidate_deals:
+                selected_deal = candidate_deals[0]
+                break
+
+        # Fallback if no deal found within step budget constraint
+        if not selected_deal:
+            for cat in step_cats:
+                step_intent = {
+                    "type": "search",
+                    "category": cat,
+                    "city": intent.get("city") or "Mumbai",
+                    "location": intent.get("location"),
+                    "area": intent.get("area"),
+                    "max_price": None,
+                }
+                candidate_deals = search_deals(step_intent)
+                candidate_deals = [d for d in candidate_deals if d.get("brand") not in used_brands]
+                if candidate_deals:
+                    valid_priced = [d for d in candidate_deals if float(str(d.get("price", "0")).replace(",", "")) > 0]
+                    selected_deal = min(valid_priced, key=lambda x: float(str(x.get("price", "999999")).replace(",", "")), default=candidate_deals[0])
+                    break
+
+        if selected_deal:
+            used_brands.add(selected_deal.get("brand"))
+            try:
+                deal_price = float(str(selected_deal.get("price", "0")).replace(",", ""))
+            except Exception:
+                deal_price = 0.0
+            total_cost += deal_price
+            itinerary_items.append((step_header, selected_deal))
+            profile_manager.add_recently_viewed(user_id, selected_deal)
+
+    reply = f"🗓️ AI Experience Itinerary: {exp_title}\n\n"
+
+    for header, deal in itinerary_items:
+        reply += (
+            f"{header}\n"
+            f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
+            f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+            f"📝 Offer: {deal.get('clean_title')}\n"
+            f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
+            f"📍 Location: {deal.get('display_location')}\n\n"
+        )
+
+    reply += "━━━━━━━━━━━━━━━━━━\n\n"
+    reply += f"💡 Estimated Total: ₹{int(total_cost)}\n"
+
+    if max_price:
+        remaining = max(0, int(max_price - total_cost))
+        reply += f"💰 Remaining Budget: ₹{remaining} (out of ₹{int(max_price)})\n"
+
+    reply += f"\n📝 Why this plan fits:\n• {fit_reason}"
+
+    await update.message.reply_text(reply, disable_web_page_preview=True)
+
+
+async def occasion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_intent: dict):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    user_query = (raw_intent.get("query") or "").lower()
+
+    # If user asked for an itinerary/plan (e.g. "Weekend with friends", "Family outing", "Relax today"), route to planner_handler!
+    if any(k in user_query for k in ["weekend", "outing", "plan", "relax", "itinerary"]):
+        await planner_handler(update, context, raw_intent)
+        return
+
     intent = memory_manager.update_context(user_id, raw_intent)
     profile_manager.update_profile_from_intent(user_id, intent)
 
@@ -197,66 +357,16 @@ async def compare_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
     await update.message.reply_text(reply, reply_markup=best_keyboard, disable_web_page_preview=True)
 
 
-async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, intent: dict):
-    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
-    max_price = intent.get("max_price") or 2000
-
-    dining_intent = {"type": "search", "category": "restaurant", "city": "Mumbai", "max_price": max_price / 2}
-    spa_intent = {"type": "search", "category": "spa", "city": "Mumbai", "max_price": max_price / 2}
-
-    dining_deals = search_deals(dining_intent)
-    spa_deals = search_deals(spa_intent)
-
-    reply = "🗓️ AI Day Planner Itinerary\n\n"
-    total_cost = 0
-
-    if spa_deals:
-        spa = spa_deals[0]
-        try:
-            total_cost += float(str(spa.get("price", "0")).replace(",", ""))
-        except Exception:
-            pass
-        reply += (
-            "🌅 Morning / Relaxation Experience\n"
-            f"🏷️ Brand: {spa.get('brand', 'N/A')}\n"
-            f"📂 Category: {spa.get('display_category', 'Spa')}\n"
-            f"📝 Offer: {spa.get('clean_title')}\n"
-            f"💰 Price: {spa.get('formatted_price')}\n"
-            f"📍 Location: {spa.get('display_location')}\n\n"
-        )
-        profile_manager.add_recently_viewed(user_id, spa)
-
-    if dining_deals:
-        dine = dining_deals[0]
-        try:
-            total_cost += float(str(dine.get("price", "0")).replace(",", ""))
-        except Exception:
-            pass
-        reply += (
-            "🌙 Evening / Dining Experience\n"
-            f"🏷️ Brand: {dine.get('brand', 'N/A')}\n"
-            f"📂 Category: {dine.get('display_category', 'Restaurant')}\n"
-            f"📝 Offer: {dine.get('clean_title')}\n"
-            f"💰 Price: {dine.get('formatted_price')}\n"
-            f"📍 Location: {dine.get('display_location')}\n\n"
-        )
-        profile_manager.add_recently_viewed(user_id, dine)
-
-    if total_cost > 0:
-        reply += f"💡 Total Estimated Cost: ₹{int(total_cost)}"
-
-    await update.message.reply_text(reply, disable_web_page_preview=True)
-
-
 async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 I'm not sure what you mean.\n\n"
         "You can ask me things like:\n"
-        "• I want a romantic dinner\n"
-        "• Birthday under ₹2000\n"
+        "• Plan a romantic evening under ₹2000\n"
+        "• Plan birthday under ₹3000\n"
+        "• Weekend with friends\n"
         "• Relax today\n"
-        "• Compare restaurants\n"
-        "• Plan my Saturday"
+        "• Business lunch\n"
+        "• Family outing"
     )
 
 
@@ -432,7 +542,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 8 Priority Router
+        # Milestone 9 AI Experience Planner Priority Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
             return
@@ -480,17 +590,17 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Milestone 8 Occasion Handler
+        # Milestone 9 AI Experience Planner Handler
+        if raw_intent["type"] == "planner":
+            await planner_handler(update, context, raw_intent)
+            return
+
         if raw_intent["type"] == "occasion":
             await occasion_handler(update, context, raw_intent)
             return
 
         if raw_intent["type"] == "compare":
             await compare_handler(update, context, raw_intent)
-            return
-
-        if raw_intent["type"] == "planner":
-            await planner_handler(update, context, raw_intent)
             return
 
         if raw_intent["type"] == "personalized":
@@ -522,7 +632,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if offset + 4 < len(cached_deals):
                 p_keyboard = build_pagination_keyboard(offset + 4)
                 await update.message.reply_text(
-                    f"Showing deals {offset + 1}-{min(offset + 4, len(cached_deals))} of {len(cached_deals)}. Click below for more!",
+                    f"Showing deals 1-{min(offset + 4, len(cached_deals))} of {len(cached_deals)}. Click below for more!",
                     reply_markup=p_keyboard,
                 )
             return
@@ -574,10 +684,10 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(
                     "I couldn't find an exact match.\n\n"
                     "Try searching for:\n"
-                    "• I want a romantic dinner\n"
-                    "• Birthday under ₹2000\n"
-                    "• Relax today\n"
-                    "• Cafe below ₹500"
+                    "• Plan a romantic evening under ₹2000\n"
+                    "• Plan birthday under ₹3000\n"
+                    "• Weekend with friends\n"
+                    "• Relax today"
                 )
             return
 
@@ -661,7 +771,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Smart Occasion Engine...")
+    print("[OK] Zookout AI Bot is running with AI Experience Planner Engine...")
     app.run_polling()
 
 

@@ -26,15 +26,15 @@ CATEGORY_KEYWORDS = {
     "family": ["family", "outing"]
 }
 
-# Milestone 8 Occasion & Mood Mapping: (Keywords, Default Category)
+# Milestone 8 & 9 Occasion & Mood Mapping
 OCCASION_MAP = {
-    "Romantic Dinner": (["romantic", "candle light", "date night", "romantic dinner", "anniversary", "date"], "restaurant"),
+    "Romantic Evening": (["romantic", "candle light", "date night", "romantic dinner", "romantic evening", "anniversary", "date"], "restaurant"),
     "Birthday Celebration": (["birthday", "bday", "b-day", "birthday celebration", "celebrate promotion", "celebrate success", "celebrate"], "restaurant"),
     "Relaxation & Wellness": (["relax", "relax today", "need a massage", "feeling stressed", "stress", "wellness"], "spa"),
     "Coffee & Cafe Meetup": (["coffee meeting", "coffee with friends", "cafe meetup"], "cafe"),
     "Business Lunch & Meeting": (["business meeting", "business lunch", "corporate meeting", "formal meeting"], "restaurant"),
     "Family Outing & Dinner": (["family dinner", "family lunch", "family outing", "kids outing"], "restaurant"),
-    "Friends Meetup": (["friends meetup", "friends", "hangout", "get together"], "cafe")
+    "Friends Meetup": (["friends meetup", "weekend with friends", "friends", "hangout", "get together"], "cafe")
 }
 
 PREFERENCES = {
@@ -104,7 +104,7 @@ CLEAR_FAVOURITES_WORDS = ["clear favourites", "delete favourites", "/clear_favou
 
 PLANNER_KEYWORDS = [
     "plan my saturday", "plan my sunday", "weekend plan", "date night plan",
-    "family outing", "plan my weekend", "day planner", "plan my day"
+    "family outing", "plan my weekend", "day planner", "plan my day", "experience plan"
 ]
 
 FAQ_QUESTIONS = {
@@ -122,8 +122,8 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    Intelligent Intent Classifier (Milestone 8 Smart Occasion & Mood Integration).
-    Priority: 1. Commands -> 2. Greetings -> 3. Help -> 4. General FAQ -> 5. Occasion -> 6. Comparison -> 7. Pagination -> 8. Day Planner -> 9. Recommendations -> 10. Search -> 11. Fallback
+    Intelligent Intent Classifier (Milestone 9 AI Experience Planner Architecture).
+    Priority: 1. Commands -> 2. Greetings -> 3. Help -> 4. General FAQ -> 5. Planner -> 6. Occasion -> 7. Comparison -> 8. Pagination -> 9. Recommendations -> 10. Search -> 11. Fallback
     """
     text = (message or "").lower().strip()
 
@@ -215,38 +215,34 @@ def detect_intent(message: str) -> Dict[str, Any]:
         if max_match:
             intent["max_price"] = int(max_match.group(1))
 
-    # 5. Occasion & Mood Intent Extraction (Milestone 8)
-    occasion_detected = None
-    default_cat_for_occ = None
+    # Extract Occasion if present
     for occ_title, (keywords, default_cat) in OCCASION_MAP.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
-            occasion_detected = occ_title
-            default_cat_for_occ = default_cat
+            intent["occasion"] = occ_title
+            if not intent["category"]:
+                intent["category"] = default_cat
             break
 
-    if occasion_detected:
-        intent["occasion"] = occasion_detected
-        if not intent["category"]:
-            intent["category"] = default_cat_for_occ
-        # Check if query is purely occasion-focused or combined with constraints
-        if not any(ck in text for ck in COMPARISON_KEYWORDS) and "plan" not in text:
+    # 5. AI Experience Planner Intent Check (Triggers when 'plan', 'itinerary', 'schedule' or explicit planner requests present)
+    planner_pattern = r"\b(?:plan|lan|pln|schedule|itinerary|experience)\b"
+    if re.search(planner_pattern, text) or "planner" in text or "itinerary" in text or text.startswith("plan "):
+        intent["type"] = "planner"
+        return intent
+
+    # 6. Occasion Intent Check
+    if intent["occasion"]:
+        if not any(ck in text for ck in COMPARISON_KEYWORDS):
             intent["type"] = "occasion"
             return intent
 
-    # 6. Comparison Intent Check
+    # 7. Comparison Intent Check
     if any(ck in text for ck in COMPARISON_KEYWORDS) or ("compare" in text and ("restaurant" in text or "restaurants" in text or "spa" in text or "spas" in text or "cafe" in text or "cafes" in text or "hotel" in text or "hotels" in text or "deal" in text or "deals" in text)):
         intent["type"] = "compare"
         return intent
 
-    # 7. Pagination Intent
+    # 8. Pagination Intent
     if any(pw in text for pw in PAGINATION_WORDS):
         intent["type"] = "pagination"
-        return intent
-
-    # 8. Day Planner Intent
-    planner_pattern = r"\b(?:plan|lan|pln|schedule|itinerary)?\s*(?:my\s*)?(?:saturday|sunday|weekend|date|day|family|outing)\b"
-    if re.search(planner_pattern, text) or any(pk in text for pk in PLANNER_KEYWORDS) or "planner" in text or "itinerary" in text:
-        intent["type"] = "planner"
         return intent
 
     # 9. Recommendation Intent
