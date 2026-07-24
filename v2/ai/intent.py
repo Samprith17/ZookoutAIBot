@@ -26,7 +26,7 @@ CATEGORY_KEYWORDS = {
     "family": ["family", "outing"]
 }
 
-# Milestone 8 & 9 Occasion & Mood Mapping
+# Milestone 8 & 9 & 10 Occasion & Mood Mapping
 OCCASION_MAP = {
     "Romantic Evening": (["romantic", "candle light", "date night", "romantic dinner", "romantic evening", "anniversary", "date"], "restaurant"),
     "Birthday Celebration": (["birthday", "bday", "b-day", "birthday celebration", "celebrate promotion", "celebrate success", "celebrate"], "restaurant"),
@@ -83,6 +83,7 @@ HELP_WORDS = ["help", "what can you do", "show commands", "guide me", "menu", "/
 PERSONALIZED_WORDS = [
     "recommend something", "suggest a deal", "suggest deals", "recommend a restaurant",
     "any recommendations", "any recommendations?", "what should i do today",
+    "any suggestions?", "any suggestions", "why this recommendation", "why this recommendation?",
     "best deals today", "suggest a spa", "personalized recommendations", "recommended for me"
 ]
 
@@ -102,7 +103,7 @@ PLANNER_TRIGGERS = [
 
 RECENT_WORDS = ["recent", "recently viewed", "history", "/history"]
 PROFILE_WORDS = ["my preferences", "my profile", "show my interests", "/profile"]
-RESET_PROFILE_WORDS = ["reset profile", "forget my preferences", "clear history", "/reset_profile"]
+RESET_PROFILE_WORDS = ["reset profile", "reset preferences", "forget my preferences", "clear history", "/reset_profile"]
 FAVOURITES_WORDS = ["my favourites", "favorites", "saved deals", "favourites", "/favourites"]
 CLEAR_FAVOURITES_WORDS = ["clear favourites", "delete favourites", "/clear_favourites"]
 
@@ -121,8 +122,7 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    Intelligent Intent Classifier (Milestone 9.1 AI Experience Planner Priority Router).
-    Priority: 1. Commands -> 2. Greetings -> 3. Help -> 4. General FAQ -> 5. PLANNER (High Priority) -> 6. Occasion -> 7. Comparison -> 8. Pagination -> 9. Recommendations -> 10. Search -> 11. Fallback
+    Intelligent Intent Classifier (Milestone 10 Preference Learning Priority Router).
     """
     text = (message or "").lower().strip()
 
@@ -222,8 +222,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
                 intent["category"] = default_cat
             break
 
-    # 5. AI EXPERIENCE PLANNER INTENT CHECK (HIGHEST PRIORITY ROUTING - Milestone 9.1)
-    # Queries starting with or containing plan, create, organize, build, itinerary, or explicit planner phrases MUST trigger planner!
+    # 5. AI EXPERIENCE PLANNER INTENT CHECK
     is_planner_trigger = any(re.search(r"\b" + re.escape(pt) + r"\b", text) for pt in PLANNER_TRIGGERS) or any(text.startswith(p) for p in ["plan ", "create ", "organize ", "build "])
     if is_planner_trigger:
         intent["type"] = "planner"

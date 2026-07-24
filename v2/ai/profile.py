@@ -7,66 +7,96 @@ logger = logging.getLogger(__name__)
 
 class UserProfileManager:
     """
-    AI Personalization & Profile Manager (Milestone 6):
-    Learns user preferences, tracks recently viewed deals, generates smart intents,
-    and supports profile management commands.
+    AI Personalization & Preference Learning Manager (Milestone 10):
+    Continuously learns user preferences with recency-weighted decay, tracks view history,
+    and generates adaptive recommendations with clear explanations.
     """
 
-    def __init__(self):
+    def __init__(self, decay_factor: float = 0.82):
+        self.decay_factor = decay_factor
         # user_id -> profile_dict
         self.profiles: Dict[int, Dict[str, Any]] = {}
         # user_id -> List[deal_dict] (Max 10)
         self.recent_history: Dict[int, List[Dict[str, Any]]] = {}
 
     def get_profile(self, user_id: int) -> Dict[str, Any]:
-        """Returns or initializes user profile."""
+        """Returns or initializes user preference profile."""
         if user_id not in self.profiles:
             self.profiles[user_id] = {
                 "categories": Counter(),
                 "locations": Counter(),
+                "occasions": Counter(),
                 "budgets": [],
                 "merchants": Counter(),
+                "recent_queries": [],
                 "search_count": 0,
             }
         return self.profiles[user_id]
 
+    def _apply_decay(self, counter: Counter):
+        """Applies recency decay factor to existing counts so recent behavior outweighs past history."""
+        for key in list(counter.keys()):
+            counter[key] *= self.decay_factor
+            if counter[key] < 0.05:
+                del counter[key]
+
     def update_profile_from_intent(self, user_id: int, intent: Dict[str, Any]):
-        """Updates user profile based on search intents."""
+        """Updates user profile based on search intents with preference decay."""
         profile = self.get_profile(user_id)
         profile["search_count"] += 1
 
+        self._apply_decay(profile["categories"])
+        self._apply_decay(profile["locations"])
+        self._apply_decay(profile["occasions"])
+        self._apply_decay(profile["merchants"])
+
         cat = intent.get("category")
         if cat:
-            profile["categories"][cat.title()] += 1
+            profile["categories"][cat.title()] += 1.0
 
         loc = intent.get("area") or intent.get("location") or intent.get("city")
         if loc:
-            profile["locations"][loc.title()] += 1
+            profile["locations"][loc.title()] += 1.0
+
+        occ = intent.get("occasion")
+        if occ:
+            profile["occasions"][occ] += 1.0
 
         max_price = intent.get("max_price")
         if max_price is not None and max_price > 0:
             profile["budgets"].append(float(max_price))
+            profile["budgets"] = profile["budgets"][-10:]  # Keep last 10 budgets
+
+        query = intent.get("query")
+        if query and query not in profile["recent_queries"]:
+            profile["recent_queries"].insert(0, query)
+            profile["recent_queries"] = profile["recent_queries"][:5]
 
     def update_profile_from_favourite(self, user_id: int, deal: Dict[str, Any]):
         """Updates user profile when a deal is saved to favourites."""
         profile = self.get_profile(user_id)
 
+        self._apply_decay(profile["categories"])
+        self._apply_decay(profile["locations"])
+        self._apply_decay(profile["merchants"])
+
         cat = deal.get("category")
         if cat and cat != "Unknown":
-            profile["categories"][cat.title()] += 2  # Stronger weight for saved deals
+            profile["categories"][cat.title()] += 2.0  # Double weight for saved deals
 
         brand = deal.get("brand")
         if brand:
-            profile["merchants"][brand] += 2
+            profile["merchants"][brand] += 2.0
 
         loc = deal.get("location")
         if loc and loc.lower() != "mumbai":
-            profile["locations"][loc.title()] += 2
+            profile["locations"][loc.title()] += 2.0
 
         try:
             price = float(str(deal.get("price", "0")).replace(",", ""))
             if price > 0:
                 profile["budgets"].append(price)
+                profile["budgets"] = profile["budgets"][-10:]
         except Exception:
             pass
 
@@ -78,7 +108,6 @@ class UserProfileManager:
         history = self.recent_history[user_id]
         deal_id = deal.get("id")
 
-        # Remove duplicate if already present
         history = [d for d in history if d.get("id") != deal_id]
         history.insert(0, deal)
 
@@ -89,7 +118,7 @@ class UserProfileManager:
         return self.recent_history.get(user_id, [])
 
     def reset_profile(self, user_id: int):
-        """Resets all profile preferences and history for a user."""
+        """Resets all learned profile preferences and history for a user."""
         if user_id in self.profiles:
             del self.profiles[user_id]
         if user_id in self.recent_history:
@@ -111,51 +140,46 @@ class UserProfileManager:
         if profile["budgets"]:
             avg_budget = sum(profile["budgets"]) / len(profile["budgets"])
 
-        if not top_cat and not top_loc and not avg_budget:
-            return None  # No learned profile yet
+        top_occ = None
+        if profile["occasions"]:
+            top_occ = profile["occasions"].most_common(1)[0][0]
+
+        if not top_cat and not top_loc and not avg_budget and not top_occ:
+            return None
 
         return {
             "type": "personalized",
             "category": top_cat.lower() if top_cat else "restaurant",
             "city": "Mumbai",
-            "area": top_loc,
-            "location": top_loc,
+            "area": top_loc if top_loc != "Mumbai" else None,
+            "location": top_loc or "Mumbai",
             "min_price": None,
             "max_price": int(avg_budget) if avg_budget else None,
-            "occasion": None,
+            "occasion": top_occ,
             "preferences": [],
             "query": f"Personalized for {top_cat or 'Deals'}",
         }
 
     def get_personalization_reasons(self, user_id: int, deal: Dict[str, Any]) -> List[str]:
-        """Generates honest, data-backed reasons for personalized recommendations."""
+        """Generates clear, data-backed explanation bullets for personalized recommendations."""
         profile = self.get_profile(user_id)
         reasons = []
 
         if profile["categories"]:
             top_cat = profile["categories"].most_common(1)[0][0]
-            deal_cat = deal.get("category", "")
-            if top_cat.lower() in deal_cat.lower() or deal_cat.lower() in top_cat.lower():
-                reasons.append(f"Recommended because you often search for {top_cat}")
+            reasons.append(f"You often choose {top_cat}s.")
 
         if profile["budgets"]:
             avg_b = sum(profile["budgets"]) / len(profile["budgets"])
-            try:
-                price = float(str(deal.get("price", "0")).replace(",", ""))
-                if price > 0 and price <= avg_b * 1.2:
-                    reasons.append(f"Fits your typical budget (under ₹{int(avg_b)})")
-            except Exception:
-                pass
+            reasons.append(f"Your typical budget is under ₹{int(avg_b)}.")
 
         if profile["locations"]:
             top_loc = profile["locations"].most_common(1)[0][0]
-            if top_loc.lower() in (deal.get("location") or "").lower():
-                reasons.append(f"Located in your preferred area ({top_loc})")
+            reasons.append(f"You usually search in {top_loc}.")
 
-        if profile["merchants"]:
-            top_m = profile["merchants"].most_common(1)[0][0]
-            if top_m.lower() in (deal.get("brand") or "").lower():
-                reasons.append(f"Matches your saved merchant ({top_m})")
+        if profile["recent_queries"]:
+            last_q = profile["recent_queries"][0]
+            reasons.append(f"Based on your recent search: '{last_q}'")
 
         if not reasons:
             reasons.append("Handpicked top offer based on your activity")

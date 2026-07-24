@@ -44,12 +44,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🏨 Hotels\n"
         "🎯 Activities\n\n"
         "Try asking:\n"
+        "• Recommend something\n"
+        "• What should I do today?\n"
         "• Plan a romantic evening under ₹2000\n"
-        "• Plan a birthday under ₹3000\n"
-        "• Plan a family outing\n"
-        "• Plan a relaxing day\n"
-        "• Weekend with friends\n"
-        "• Plan a business lunch"
+        "• Compare restaurants in Mumbai\n"
+        "• My Preferences"
     )
 
 
@@ -58,32 +57,25 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 Zookout AI Guide & Supported Features\n\n"
         "I can help you discover, compare, and book local deals across India!\n\n"
         "Available Features & Commands:\n"
+        "🌟 Smart Personalization & Preference Learning (`Recommend something`, `My Preferences`)\n"
         "🗓️ AI Experience Planner (`Plan a romantic evening under ₹2000`)\n"
         "❤️ Smart Occasion & Mood Recommendations (`Romantic Evening`, `Relax today`)\n"
         "📊 AI Smart Deal Comparison (`Compare restaurants`)\n"
         "🍽️ Restaurant & Cafe Deals\n"
         "💆 Spa & Salon Offers\n"
         "🏨 Hotel & Resort Staycations\n"
-        "🎯 Entertainment & Water Parks\n"
         "❤️ My Favourites (`My Favourites`)\n"
-        "📜 Search History (`Recently Viewed`)\n"
-        "🌟 Personal Recommendations (`Recommend something`)\n\n"
+        "📜 Search History (`Recently Viewed`)\n\n"
         "Try typing:\n"
+        "• Recommend something\n"
+        "• What should I do today?\n"
         "• Plan a romantic evening under ₹2000\n"
-        "• Plan a birthday under ₹3000\n"
-        "• Plan a family outing\n"
-        "• Plan a relaxing day\n"
-        "• Weekend with friends\n"
-        "• Plan a business lunch"
+        "• Compare restaurants\n"
+        "• Reset Preferences"
     )
 
 
 async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_intent: dict):
-    """
-    AI Experience Planner Engine (Milestone 9.1 Complete Templates & Budget Manager).
-    Generates 2–4 chronological itinerary steps with budget tracking (Estimated Total, Remaining Budget)
-    and brand de-duplication across Romantic, Birthday, Weekend Friends, Relax, Family, Business, and Solo templates.
-    """
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
     intent = memory_manager.update_context(user_id, raw_intent)
     profile_manager.update_profile_from_intent(user_id, intent)
@@ -92,7 +84,6 @@ async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
     max_price = intent.get("max_price")
     occasion = (intent.get("occasion") or "").lower()
 
-    # Milestone 9.1 Specific Itinerary Templates
     if "romantic" in occasion or "romantic" in user_query or "date" in user_query:
         exp_title = "Romantic Evening"
         steps = [
@@ -164,7 +155,6 @@ async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
         ]
         fit_reason = "A well-rounded weekend experience combining daytime leisure and evening dining."
 
-    # Execute step searches with Budget Management and Brand De-duplication
     itinerary_items = []
     total_cost = 0.0
     used_brands = set()
@@ -189,7 +179,6 @@ async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
                 selected_deal = candidate_deals[0]
                 break
 
-        # Fallback if no deal found within step budget constraint
         if not selected_deal:
             for cat in step_cats:
                 step_intent = {
@@ -245,7 +234,6 @@ async def occasion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, r
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
     user_query = (raw_intent.get("query") or "").lower()
 
-    # Route plan / itinerary requests to planner_handler
     if any(k in user_query for k in ["weekend", "outing", "plan", "relax", "itinerary"]):
         await planner_handler(update, context, raw_intent)
         return
@@ -364,20 +352,11 @@ async def compare_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
     await update.message.reply_text(reply, reply_markup=best_keyboard, disable_web_page_preview=True)
 
 
-async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🤖 I'm not sure what you mean.\n\n"
-        "You can ask me things like:\n"
-        "• Plan a romantic evening under ₹2000\n"
-        "• Plan birthday under ₹3000\n"
-        "• Weekend with friends\n"
-        "• Relax today\n"
-        "• Business lunch\n"
-        "• Family outing"
-    )
-
-
 async def personalized_recommendations_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Adaptive Personalization Handler (Milestone 10).
+    Uses learned recency-weighted preference profile and provides clear explanation bullets.
+    """
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
     p_intent = profile_manager.get_personalized_intent(user_id)
 
@@ -440,6 +419,48 @@ async def personalized_recommendations_handler(update: Update, context: ContextT
         await update.message.reply_text(f"Showing deals 1-{min(4, len(results))} of {len(results)}. Click below for more!", reply_markup=p_keyboard)
 
 
+async def profile_preferences_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Displays User Preference Profile (Milestone 10).
+    """
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    profile = profile_manager.get_profile(user_id)
+
+    if profile["search_count"] == 0 and not profile["categories"]:
+        await update.message.reply_text(
+            "👤 Your preference profile is currently empty!\n\n"
+            "Search for deals or save favourites, and I will automatically learn your preferences over time."
+        )
+        return
+
+    top_cat = profile["categories"].most_common(1)[0][0] if profile["categories"] else "Not specified"
+    top_loc = profile["locations"].most_common(1)[0][0] if profile["locations"] else "Mumbai"
+    top_occ = profile["occasions"].most_common(1)[0][0] if profile["occasions"] else "Not specified"
+    top_merch = profile["merchants"].most_common(1)[0][0] if profile["merchants"] else "Not specified"
+    avg_b = int(sum(profile["budgets"]) / len(profile["budgets"])) if profile["budgets"] else None
+    budget_str = f"Under ₹{avg_b}" if avg_b else "Not specified"
+
+    reply = (
+        "👤 Your Learned Preference Profile:\n\n"
+        f"📂 Favorite Category: {top_cat}\n"
+        f"📍 Favorite Location: {top_loc}\n"
+        f"💰 Typical Budget: {budget_str}\n"
+        f"❤️ Favorite Occasion: {top_occ}\n"
+        f"🏷️ Favorite Brand: {top_merch}\n"
+        f"📊 Total Activity Recorded: {profile['search_count']} searches"
+    )
+    await update.message.reply_text(reply)
+
+
+async def reset_profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    confirm_keyboard = build_confirm_reset_profile_keyboard()
+    await update.message.reply_text(
+        "⚠️ Are you sure you want to reset your preference profile and clear your search history?",
+        reply_markup=confirm_keyboard,
+    )
+
+
 async def recently_viewed_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
     history = profile_manager.get_recently_viewed(user_id)
@@ -460,43 +481,6 @@ async def recently_viewed_handler(update: Update, context: ContextTypes.DEFAULT_
         )
         keyboard = build_deal_keyboard(deal)
         await update.message.reply_text(reply, reply_markup=keyboard, disable_web_page_preview=True)
-
-
-async def profile_preferences_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
-    profile = profile_manager.get_profile(user_id)
-
-    if profile["search_count"] == 0 and not profile["categories"]:
-        await update.message.reply_text(
-            "👤 Your preference profile is currently empty!\n\n"
-            "Search for deals or save favourites, and I will automatically learn your preferences over time."
-        )
-        return
-
-    cats_str = ", ".join([f"{k} ({v})" for k, v in profile["categories"].most_common(3)]) or "None"
-    locs_str = ", ".join([f"{k} ({v})" for k, v in profile["locations"].most_common(3)]) or "None"
-    merch_str = ", ".join([f"{k} ({v})" for k, v in profile["merchants"].most_common(3)]) or "None"
-    avg_b = int(sum(profile["budgets"]) / len(profile["budgets"])) if profile["budgets"] else None
-    budget_str = f"Under ₹{avg_b}" if avg_b else "Not specified"
-
-    reply = (
-        "👤 Your Personal Preference Profile:\n\n"
-        f"📂 Favourite Categories: {cats_str}\n"
-        f"💰 Typical Budget: {budget_str}\n"
-        f"📍 Preferred Locations: {locs_str}\n"
-        f"🏷️ Favourite Merchants: {merch_str}\n"
-        f"📊 Total Searches Recorded: {profile['search_count']}"
-    )
-    await update.message.reply_text(reply)
-
-
-async def reset_profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
-    confirm_keyboard = build_confirm_reset_profile_keyboard()
-    await update.message.reply_text(
-        "⚠️ Are you sure you want to reset your preference profile and clear your search history?",
-        reply_markup=confirm_keyboard,
-    )
 
 
 async def favourites_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -541,6 +525,18 @@ async def clear_favourites_handler(update: Update, context: ContextTypes.DEFAULT
     )
 
 
+async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 I'm not sure what you mean.\n\n"
+        "You can ask me things like:\n"
+        "• Recommend something\n"
+        "• What should I do today?\n"
+        "• Plan a romantic evening under ₹2000\n"
+        "• My Preferences\n"
+        "• Reset Preferences"
+    )
+
+
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
@@ -549,7 +545,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 9.1 AI Experience Planner Priority Router
+        # Milestone 10 Preference Learning Priority Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
             return
@@ -597,7 +593,6 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Milestone 9.1 Planner Priority Route
         if raw_intent["type"] == "planner":
             await planner_handler(update, context, raw_intent)
             return
@@ -648,7 +643,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await fallback_handler(update, context)
             return
 
-        # Standard Context-Aware Search Processing
+        # Standard Context-Aware Search Processing with Preference Learning
         intent = memory_manager.update_context(user_id, raw_intent)
         if intent["type"] == "search":
             profile_manager.update_profile_from_intent(user_id, intent)
@@ -691,10 +686,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(
                     "I couldn't find an exact match.\n\n"
                     "Try searching for:\n"
-                    "• Plan a romantic evening under ₹2000\n"
-                    "• Plan a birthday under ₹3000\n"
-                    "• Weekend with friends\n"
-                    "• Relax today"
+                    "• Recommend something\n"
+                    "• What should I do today?\n"
+                    "• Plan a romantic evening under ₹2000"
                 )
             return
 
@@ -778,7 +772,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Milestone 9.1 AI Experience Planner...")
+    print("[OK] Zookout AI Bot is running with Preference Learning Engine...")
     app.run_polling()
 
 
