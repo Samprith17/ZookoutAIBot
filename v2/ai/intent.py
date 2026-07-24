@@ -181,8 +181,9 @@ def detect_intent(message: str) -> Dict[str, Any]:
             intent["faq_answer"] = answer
             return intent
 
-    # 5. Day Planner Intent
-    if any(pk in text for pk in PLANNER_KEYWORDS) or ("plan" in text and ("saturday" in text or "sunday" in text or "weekend" in text or "date" in text or "family" in text)):
+    # 5. Day Planner Intent (Flexible Pattern & Typo Tolerance)
+    planner_pattern = r"\b(?:plan|lan|pln|schedule|itinerary)?\s*(?:my\s*)?(?:saturday|sunday|weekend|date|day|family|outing)\b"
+    if re.search(planner_pattern, text) or any(pk in text for pk in PLANNER_KEYWORDS) or "planner" in text or "itinerary" in text:
         intent["type"] = "planner"
         max_match = re.search(r"(?:under|below|less than|budget of)\s*₹?\s*(\d+)", text)
         if max_match:
