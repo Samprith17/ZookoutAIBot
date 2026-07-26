@@ -1,5 +1,5 @@
 """
-Milestone 15 - Merchant & Business Intelligence Router (Updated with Priority Order)
+Milestone 15.0 - Merchant & Business Intelligence Router (Updated Bug 2 & Bug 3 Triggers)
 Dedicated router that intercepts all merchant growth, offer review, dashboard, health, promotion, marketing content creator, and business intelligence analytics commands.
 Guarantees merchant & business queries NEVER fall back to customer search, planner, recommendations, or comparison.
 """
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 MERCHANT_ROUTES = {
     # Milestone 15 Business Intelligence & Analytics Routes (High Priority)
     "analytics_dashboard": ["business dashboard", "my business dashboard", "bi dashboard", "/business_dashboard"],
-    "analytics_summary": ["catalog summary", "summary report", "/catalog_summary"],
+    "analytics_summary": ["catalog summary", "catalog overview", "summary", "catalog report", "summary report", "/catalog_summary"],
     "analytics_category": ["category analytics", "top categories", "/category_analytics"],
     "analytics_brand": ["brand analytics", "top brands", "/brand_analytics"],
     "analytics_location": ["location analytics", "top locations", "/location_analytics"],
@@ -20,7 +20,12 @@ MERCHANT_ROUTES = {
     "analytics_health": ["catalog health", "/catalog_health"],
     "analytics_distribution": ["offer distribution", "distribution", "/distribution"],
     "analytics_insights": ["business insights", "/business_insights"],
-    "analytics_improvements": ["what should we improve?", "what should we improve", "improvement suggestions", "how can the catalog improve?", "/catalog_improvements"],
+    "analytics_improvements": [
+        "what should we improve?", "what should we improve",
+        "how can the catalog improve?", "how can the catalog improve",
+        "catalog recommendations", "improvement suggestions",
+        "/catalog_improvements"
+    ],
     "analytics_help": ["business help", "explain analytics", "/business_help"],
 
     # Milestone 14 AI Content Creator Routes

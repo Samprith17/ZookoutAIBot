@@ -10,18 +10,18 @@ logger = logging.getLogger(__name__)
 
 class BusinessAnalyticsEngine:
     """
-    Milestone 15 - AI-Powered Business Intelligence & Analytics Engine:
-    Analyzes normalized catalog datasets dynamically and generates data-backed business insights,
-    catalog health diagnostics, category/brand/location/price analytics, and improvement suggestions.
-    Strict Rule: Uses strictly normalized catalog data; never invents revenue, profit, bookings, CTR, or conversion rates.
+    Milestone 15.0 - Business Intelligence & Analytics Engine (Bug-Fixed Production Quality):
+    - Report Separation: Business Dashboard (Business KPIs), Catalog Summary (Counts & Completeness Coverage),
+      Catalog Health (Data Quality Score), Business Insights (Observations), Improvement Suggestions (Actionable Fixes).
+    - Strict Data Rule: Uses strictly normalized catalog data; never invents revenue, profit, bookings, CTR, or sales.
     """
 
     def get_dataset(self) -> List[Dict[str, Any]]:
-        """Retrieves normalized merchant dataset (reuses merchant_agent.get_merchant_dataset())."""
+        """Retrieves normalized merchant dataset."""
         return merchant_agent.get_merchant_dataset()
 
     def generate_business_dashboard(self) -> str:
-        """FEATURE 1: Business Dashboard."""
+        """BUG 1 FIX: Business Dashboard (Header: 📊 Business Intelligence Dashboard)."""
         dataset = self.get_dataset()
         total_offers = len(dataset)
 
@@ -62,37 +62,58 @@ class BusinessAnalyticsEngine:
         )
 
     def generate_catalog_summary(self) -> str:
-        """FEATURE 2: Catalog Summary."""
+        """BUG 2 & BUG 4 FIX: Dedicated Catalog Summary & Completeness Coverage Report."""
         dataset = self.get_dataset()
         total = len(dataset)
 
-        brands = Counter(d.get("brand") for d in dataset if d.get("brand"))
-        categories = Counter(d.get("display_category") for d in dataset if d.get("display_category"))
-        locations = Counter(d.get("display_location") for d in dataset if d.get("display_location"))
+        brands = {d.get("brand") for d in dataset if d.get("brand")}
+        categories = {d.get("display_category") for d in dataset if d.get("display_category")}
+        locations = {d.get("display_location") for d in dataset if d.get("display_location")}
 
-        prices = [float(str(d.get("price", "0")).replace(",", "")) for d in dataset if float(str(d.get("price", "0")).replace(",", "")) > 0]
+        priced = [float(str(d.get("price", "0")).replace(",", "")) for d in dataset if float(str(d.get("price", "0")).replace(",", "")) > 0]
         discounts = [d.get("discount_percent", 0) for d in dataset]
 
-        min_p, max_p = (int(min(prices)), int(max(prices))) if prices else (0, 0)
-        avg_p = int(sum(prices) / max(1, len(prices))) if prices else 0
+        avg_p = int(sum(priced) / max(1, len(priced))) if priced else 0
+        median_p = int(statistics.median(priced)) if priced else 0
+        min_p = int(min(priced)) if priced else 0
+        max_p = int(max(priced)) if priced else 0
 
-        min_d, max_d = (min(discounts), max(discounts)) if discounts else (0, 0)
-        avg_d = int(sum(discounts) / max(1, total))
+        avg_d = int(sum(discounts) / max(1, total)) if discounts else 0
+        max_d = max(discounts) if discounts else 0
+
+        price_complete = len(priced)
+        cat_complete = sum(1 for d in dataset if d.get("display_category") and d.get("display_category") != "Special Experience")
+        loc_complete = sum(1 for d in dataset if d.get("display_location") and d.get("display_location") != "Location unavailable")
+        desc_complete = sum(1 for d in dataset if len(d.get("description", "")) >= 20)
+
+        price_pct = int((price_complete / max(1, total)) * 100)
+        cat_pct = int((cat_complete / max(1, total)) * 100)
+        loc_pct = int((loc_complete / max(1, total)) * 100)
+        desc_pct = int((desc_complete / max(1, total)) * 100)
 
         return (
-            "📑 Catalog Summary Report\n\n"
-            f"• Total Listed Offers: {total}\n"
-            f"• Unique Brands: {len(brands)}\n"
-            f"• Unique Categories: {len(categories)}\n"
-            f"• Unique Locations: {len(locations)}\n\n"
-            f"💵 Price Range: ₹{min_p} – ₹{max_p} (Avg: ₹{avg_p})\n"
-            f"🎁 Discount Range: {min_d}% – {max_d}% (Avg: {avg_d}%)\n\n"
-            f"📂 Top Categories: {', '.join([k for k, v in categories.most_common(3)])}\n"
-            f"📍 Top Locations: {', '.join([k for k, v in locations.most_common(3)])}"
+            "📑 Catalog Summary & Completeness Report\n\n"
+            f"• Total Offers: {total}\n"
+            f"• Total Brands: {len(brands)}\n"
+            f"• Total Categories: {len(categories)}\n"
+            f"• Total Locations: {len(locations)}\n\n"
+            "💰 Pricing & Discount Averages:\n"
+            f"• Average Price: ₹{avg_p}\n"
+            f"• Median Price: ₹{median_p}\n"
+            f"• Lowest Price: ₹{min_p}\n"
+            f"• Highest Price: ₹{max_p}\n"
+            f"• Average Discount: {avg_d}%\n"
+            f"• Highest Discount: {max_d}%\n\n"
+            "📋 Catalog Completeness Coverage:\n"
+            f"✓ Price Completeness: {price_complete} / {total} ({price_pct}%)\n"
+            f"✓ Category Completeness: {cat_complete} / {total} ({cat_pct}%)\n"
+            f"✓ Location Completeness: {loc_complete} / {total} ({loc_pct}%)\n"
+            f"✓ Description Completeness: {desc_complete} / {total} ({desc_pct}%)\n\n"
+            "ℹ️ Note: Summarizes catalog totals and data completeness percentages."
         )
 
     def generate_category_analytics(self) -> str:
-        """FEATURE 3: Category Analytics."""
+        """Category Analytics."""
         dataset = self.get_dataset()
         cat_map: Dict[str, List[Dict[str, Any]]] = {}
 
@@ -130,7 +151,7 @@ class BusinessAnalyticsEngine:
         return reply
 
     def generate_brand_analytics(self) -> str:
-        """FEATURE 4: Brand Analytics."""
+        """Brand Analytics."""
         dataset = self.get_dataset()
         brand_map: Dict[str, List[Dict[str, Any]]] = {}
 
@@ -173,7 +194,7 @@ class BusinessAnalyticsEngine:
         return reply
 
     def generate_location_analytics(self) -> str:
-        """FEATURE 5: Location Analytics."""
+        """Location Analytics."""
         dataset = self.get_dataset()
         loc_map: Dict[str, List[Dict[str, Any]]] = {}
 
@@ -203,7 +224,7 @@ class BusinessAnalyticsEngine:
         return reply
 
     def generate_discount_analytics(self) -> str:
-        """FEATURE 6: Discount Analytics."""
+        """Discount Analytics."""
         dataset = self.get_dataset()
         total = len(dataset)
         discounts = [d.get("discount_percent", 0) for d in dataset]
@@ -212,7 +233,6 @@ class BusinessAnalyticsEngine:
         max_d = max(discounts) if discounts else 0
         no_disc_count = sum(1 for d in discounts if d == 0)
 
-        # Distribution ranges
         tier_0 = no_disc_count
         tier_1 = sum(1 for d in discounts if 1 <= d <= 25)
         tier_2 = sum(1 for d in discounts if 26 <= d <= 50)
@@ -232,7 +252,7 @@ class BusinessAnalyticsEngine:
         )
 
     def generate_price_analytics(self) -> str:
-        """FEATURE 7: Price Analytics."""
+        """Price Analytics."""
         dataset = self.get_dataset()
         priced_deals = [d for d in dataset if float(str(d.get("price", "0")).replace(",", "")) > 0]
         prices = sorted([float(str(d.get("price", "0")).replace(",", "")) for d in priced_deals])
@@ -264,7 +284,7 @@ class BusinessAnalyticsEngine:
         )
 
     def generate_catalog_health(self) -> str:
-        """FEATURE 8: Catalog Health Diagnostic."""
+        """BUG 4 FIX: Catalog Health Diagnostic (Focused strictly on data quality & health score)."""
         dataset = self.get_dataset()
         total = len(dataset)
 
@@ -291,18 +311,18 @@ class BusinessAnalyticsEngine:
         return (
             "🩺 Catalog Health Diagnostic\n\n"
             f"🏆 Catalog Health Status: {rating} ({health_score}/100)\n\n"
-            "Diagnostic Evaluation:\n"
+            "Data Quality Diagnostic:\n"
             f"• Missing Pricing: {missing_prices} / {total}\n"
             f"• OCR Title Artifacts: {ocr_issues} / {total}\n"
             f"• Incomplete Descriptions: {short_desc} / {total}\n"
             f"• Duplicate Listings: {duplicates} / {total}\n"
             f"• Missing Locations: {missing_locations} / {total}\n"
             f"• Generic Category Fallbacks: {missing_categories} / {total}\n\n"
-            "ℹ️ Explanation: Rating is computed from missing prices, title OCR artifacts, description length, and listing duplicates."
+            "ℹ️ Explanation: Health status evaluates missing prices, OCR title artifacts, description length, and listing duplicates."
         )
 
     def generate_offer_distribution(self) -> str:
-        """FEATURE 9: Offer Distribution."""
+        """Offer Distribution."""
         dataset = self.get_dataset()
 
         cats = Counter(d.get("display_category") for d in dataset if d.get("display_category"))
@@ -324,7 +344,7 @@ class BusinessAnalyticsEngine:
         )
 
     def generate_business_insights(self) -> str:
-        """FEATURE 10: Business Insights (Derived strictly from catalog data)."""
+        """BUG 4 FIX: Business Insights (Derived strictly from catalog data observations & trends)."""
         dataset = self.get_dataset()
         total = len(dataset)
 
@@ -346,22 +366,31 @@ class BusinessAnalyticsEngine:
 
         return (
             "💡 Business Intelligence Insights\n\n"
-            "Catalog Observations:\n"
+            "Catalog Observations & Trends:\n"
             f"1. 📂 {top_cat} category contains the highest offer density ({top_cat_count} out of {total} offers).\n"
             f"2. 🎁 {top_disc_cat} offers carry the highest average discount level ({top_disc_avg}% OFF).\n"
             f"3. 📍 {top_loc} represents the dominant geographical listing area ({top_loc_count} offers).\n"
             f"4. 💰 The catalog median payable price is ₹{int(statistics.median([float(str(d.get('price', '0')).replace(',', '')) for d in dataset if float(str(d.get('price', '0')).replace(',', '')) > 0]))}.\n\n"
-            "ℹ️ Note: Insights are derived strictly from active catalog listing parameters."
+            "ℹ️ Note: Observations are derived strictly from active catalog listing parameters."
         )
 
     def generate_improvement_suggestions(self) -> str:
-        """FEATURE 11: Improvement Suggestions (What should we improve?)."""
+        """BUG 3 FIX: Improvement Suggestions (Actionable recommendations using catalog gaps only)."""
         dataset = self.get_dataset()
         total = len(dataset)
 
         missing_prices = sum(1 for d in dataset if float(str(d.get("price", "0")).replace(",", "")) == 0)
         ocr_issues = sum(1 for d in dataset if d.get("clean_title") != d.get("title"))
         short_desc = sum(1 for d in dataset if len(d.get("description", "")) < 30)
+
+        title_set = set()
+        duplicates = 0
+        for d in dataset:
+            t = d.get("clean_title", "")
+            if t in title_set:
+                duplicates += 1
+            else:
+                title_set.add(t)
 
         suggestions = []
         if missing_prices > 0:
@@ -370,26 +399,29 @@ class BusinessAnalyticsEngine:
         if ocr_issues > 0:
             suggestions.append(f"• OCR Cleanliness: Clean title artifacts on {ocr_issues} offers to improve search matching.")
 
+        if duplicates > 0:
+            suggestions.append(f"• Deduplication: De-duplicate {duplicates} redundant listing titles across catalog entries.")
+
         if short_desc > 0:
             suggestions.append(f"• Description Detail: Expand descriptions for {short_desc} offers with clear inclusion bullets.")
 
+        suggestions.append("• Category Consistency: Ensure all listings use standardized primary categories.")
         suggestions.append("• Discount Visibility: Ensure high-discount offers (30%+ OFF) feature bold promotional banners.")
-        suggestions.append("• Location Verification: Verify exact sub-area locations for all listed venues.")
 
         return (
             "🛠️ Catalog Improvement Recommendations\n\n"
             "Actionable Fixes for Catalog Optimization:\n\n"
             + "\n\n".join(suggestions) + "\n\n"
-            "ℹ️ Note: Based strictly on current catalog listing quality analysis."
+            "ℹ️ Note: Recommendations are generated using strictly missing prices, OCR artifacts, duplicates, category consistency, and description quality."
         )
 
     def generate_business_help(self) -> str:
-        """FEATURE 12: Business Help."""
+        """Business Help."""
         return (
             "💡 Business Intelligence Help Guide\n\n"
             "Available Analytics Commands:\n"
             "• Business Dashboard: Overview of total offers, brands, categories, prices, and discounts.\n"
-            "• Catalog Summary: High-level overview of pricing ranges, discount tiers, and top categories.\n"
+            "• Catalog Summary: High-level overview of pricing ranges, discount tiers, and completeness coverage.\n"
             "• Category Analytics: Performance, pricing, and discount breakdown per category.\n"
             "• Brand Analytics: Listing volume and score performance per merchant brand.\n"
             "• Location Analytics: Pricing and offer density breakdown by city and location.\n"
