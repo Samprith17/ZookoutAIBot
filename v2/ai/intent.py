@@ -26,7 +26,7 @@ CATEGORY_KEYWORDS = {
     "family": ["family", "outing"]
 }
 
-# Milestone 8 & 9 & 10 & 11 Occasion & Mood Mapping
+# Milestone 8 & 9 & 10 & 11 & 12 Occasion & Mood Mapping
 OCCASION_MAP = {
     "Romantic Evening": (["romantic", "candle light", "date night", "romantic dinner", "romantic evening", "anniversary", "date"], "restaurant"),
     "Birthday Celebration": (["birthday", "bday", "b-day", "birthday celebration", "celebrate promotion", "celebrate success", "celebrate"], "restaurant"),
@@ -69,8 +69,8 @@ HELP_WORDS = ["help", "what can you do", "show commands", "guide me", "menu", "/
 PERSONALIZED_WORDS = [
     "recommend something", "suggest a deal", "suggest deals", "recommend a restaurant",
     "any recommendations", "any recommendations?", "what should i do today",
-    "any suggestions?", "any suggestions", "why this recommendation", "why this recommendation?",
-    "best deals today", "suggest a spa", "personalized recommendations", "recommended for me"
+    "any suggestions?", "any suggestions", "best deals today", "suggest a spa",
+    "personalized recommendations", "recommended for me"
 ]
 
 COMPARISON_KEYWORDS = [
@@ -85,6 +85,14 @@ PAGINATION_WORDS = [
 
 PLANNER_TRIGGERS = [
     "plan", "create", "organize", "build", "itinerary", "schedule", "planner"
+]
+
+SAVINGS_WORDS = ["my savings", "savings", "show savings", "my savings profile", "/savings"]
+OPPORTUNITIES_WORDS = ["show opportunities", "opportunities", "deals for me", "savings opportunities", "new opportunities", "/opportunities"]
+SAVED_DEALS_WORDS = ["saved deals", "my saved deals"]
+WHY_THIS_WORDS = [
+    "why did i get this?", "why did i get this", "why this deal?", "why this deal",
+    "why this recommendation?", "why this recommendation", "why did i get this deal", "why did i get this deal?"
 ]
 
 RECENT_WORDS = ["recent", "recently viewed", "history", "/history"]
@@ -108,8 +116,8 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    AI Concierge 2.0 Multi-Constraint Classifier (Milestone 11).
-    Extracts Category, Budget, Location, Area, Occasion, Date, Time, Group Size, and Meal Type.
+    AI Customer Savings Agent & Multi-Constraint NLU Classifier (Milestone 12).
+    Priority: 1. Commands -> 2. Savings & Opportunities -> 3. Greetings -> 4. Help -> 5. FAQ -> 6. Planner -> 7. Occasion -> 8. Comparison -> 9. Pagination -> 10. Recommendations -> 11. Search -> 12. Fallback
     """
     text = (message or "").lower().strip()
 
@@ -134,7 +142,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
         "query": message,
     }
 
-    # 1. Commands
+    # 1. System Commands
     if text in ["/start", "start"]:
         intent["type"] = "greeting"
         return intent
@@ -143,7 +151,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
         intent["type"] = "recent"
         return intent
 
-    if text in FAVOURITES_WORDS:
+    if text in FAVOURITES_WORDS or text in SAVED_DEALS_WORDS:
         intent["type"] = "favourites"
         return intent
 
@@ -157,6 +165,19 @@ def detect_intent(message: str) -> Dict[str, Any]:
 
     if text in RESET_PROFILE_WORDS:
         intent["type"] = "reset_profile"
+        return intent
+
+    # Milestone 12 Commands
+    if text in SAVINGS_WORDS:
+        intent["type"] = "savings"
+        return intent
+
+    if text in OPPORTUNITIES_WORDS:
+        intent["type"] = "opportunities"
+        return intent
+
+    if text in WHY_THIS_WORDS:
+        intent["type"] = "why_this"
         return intent
 
     # 2. Greetings Intent
@@ -176,8 +197,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
             intent["faq_answer"] = answer
             return intent
 
-    # Milestone 11 Parameter Extraction
-    # Extract Date
+    # Constraint Extraction
     if "today" in text:
         intent["date"] = "today"
     elif "tomorrow" in text:
@@ -189,7 +209,6 @@ def detect_intent(message: str) -> Dict[str, Any]:
     elif "weekend" in text:
         intent["date"] = "this weekend"
 
-    # Extract Time Filter
     if "morning" in text:
         intent["time_filter"] = "morning"
     elif "afternoon" in text:
@@ -201,7 +220,6 @@ def detect_intent(message: str) -> Dict[str, Any]:
     elif "late night" in text:
         intent["time_filter"] = "late night"
 
-    # Extract Meal Type
     if "lunch" in text:
         intent["meal_type"] = "lunch"
     elif "dinner" in text:
@@ -211,7 +229,6 @@ def detect_intent(message: str) -> Dict[str, Any]:
     elif "buffet" in text:
         intent["meal_type"] = "buffet"
 
-    # Extract Group Size
     if "solo" in text:
         intent["group_size"] = "solo"
     elif "couple" in text or "for 2" in text or "for two" in text:
@@ -219,14 +236,12 @@ def detect_intent(message: str) -> Dict[str, Any]:
     elif "family" in text or "group" in text:
         intent["group_size"] = "family"
 
-    # Extract Category
     sorted_categories = sorted(CATEGORY_KEYWORDS.items(), key=lambda x: max(len(k) for k in x[1]), reverse=True)
     for category, keywords in sorted_categories:
         if any(re.search(r"\b" + re.escape(keyword) + r"\b", text) for keyword in keywords):
             intent["category"] = category
             break
 
-    # Extract Location / Area
     for loc in LOCATIONS:
         if loc in text:
             intent["location"] = loc.title()
@@ -237,7 +252,6 @@ def detect_intent(message: str) -> Dict[str, Any]:
                 intent["city"] = "Mumbai"
             break
 
-    # Extract Budget
     range_match = re.search(r"(?:between|from)?\s*₹?\s*(\d+)\s*(?:and|to|-)\s*₹?\s*(\d+)", text)
     if range_match:
         intent["min_price"] = int(range_match.group(1))
@@ -247,7 +261,6 @@ def detect_intent(message: str) -> Dict[str, Any]:
         if max_match:
             intent["max_price"] = int(max_match.group(1))
 
-    # Extract Occasion if present
     for occ_title, (keywords, default_cat) in OCCASION_MAP.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
             intent["occasion"] = occ_title

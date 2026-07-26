@@ -14,6 +14,7 @@ from v2.search.search_engine import search_deals
 from v2.ai.intent import detect_intent
 from v2.ai.memory import memory_manager
 from v2.ai.profile import profile_manager
+from v2.ai.savings import savings_agent
 from v2.telegram.handlers import (
     USER_SEARCH_CACHE,
     get_favourites,
@@ -79,7 +80,7 @@ def get_suggested_next_actions(intent: dict) -> str:
 
     actions.append(f"• Type \"Plan a {cat} in {loc}\" for a full itinerary")
     actions.append(f"• Type \"Compare {cat}s in {loc}\" for side-by-side comparison")
-    actions.append("• Type \"Cheaper\" or \"Luxury\" to adjust budget range")
+    actions.append("• Type \"My Savings\" or \"Show Opportunities\" to surface top savings")
 
     return "\n".join(actions)
 
@@ -91,43 +92,109 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"👋 Hello {first_name}!\n\n"
-        "I'm Zookout AI Concierge 2.0.\n\n"
-        "I can help you discover amazing offers matching your category, location, budget, occasion, and timing:\n\n"
+        "I'm Zookout AI - Customer Savings Agent & AI Concierge.\n\n"
+        "I can help you discover, compare, and automatically surface savings opportunities across:\n\n"
         "🍽 Restaurants\n"
         "☕ Cafes\n"
         "💆 Spas & Salons\n"
         "🏨 Hotels & Staycations\n"
         "🎯 Activities & Outings\n\n"
         "Try asking:\n"
+        "• My Savings\n"
+        "• Show Opportunities\n"
+        "• Recommend something\n"
         "• Romantic dinner in Andheri under ₹2000\n"
-        "• Birthday in Bandra\n"
-        "• Spa tomorrow morning\n"
-        "• Cafe near Powai\n"
-        "• Family lunch\n"
-        "• Weekend outing"
+        "• Why did I get this?"
     )
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 Zookout AI Concierge 2.0 Features\n\n"
-        "I understand multi-constraint natural requests across Category, Location, Budget, Occasion, Date, Time, and Group Size!\n\n"
-        "Available Features:\n"
+        "🤖 Zookout AI Savings Agent Features\n\n"
+        "Available Commands & Capabilities:\n"
+        "💰 Customer Savings Profile (`My Savings`)\n"
+        "🔥 Opportunity Detection (`Show Opportunities`)\n"
+        "❓ Recommendation Explanation (`Why did I get this?`)\n"
         "🔍 Multi-Constraint Search (`Romantic dinner in Andheri under ₹2000`)\n"
         "🗓️ AI Experience Planner (`Plan a romantic evening under ₹2000`)\n"
-        "❤️ Smart Occasion Recommendations (`Birthday in Bandra`)\n"
-        "📊 Deal Comparison (`Compare restaurants in Mumbai`)\n"
+        "📊 Deal Comparison (`Compare restaurants`)\n"
         "🌟 Smart Personalization (`Recommend something`)\n"
         "📜 Search History (`Recently Viewed`)\n"
         "❤️ Saved Favourites (`My Favourites`)\n\n"
-        "Try asking:\n"
-        "• Romantic dinner in Andheri under ₹2000\n"
-        "• Birthday in Bandra\n"
-        "• Spa tomorrow morning\n"
-        "• Cafe near Powai\n"
-        "• Family lunch\n"
-        "• Weekend outing"
+        "Try typing:\n"
+        "• My Savings\n"
+        "• Show Opportunities\n"
+        "• Recommend something\n"
+        "• Why did I get this?"
     )
+
+
+async def savings_profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    summary = savings_agent.get_savings_profile_summary(user_id)
+    await update.message.reply_text(summary)
+
+
+async def opportunities_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    opps = savings_agent.detect_opportunities(user_id, limit=4)
+
+    if not opps:
+        await update.message.reply_text(
+            "🔥 Customer Savings Agent:\n\n"
+            "No new unnotified deal opportunities found right now based on your current preferences.\n\n"
+            "Try searching for deals or saving favourites to help me detect personalized opportunities for you!"
+        )
+        return
+
+    await update.message.reply_text(f"🔥 Customer Savings Agent: Found {len(opps)} Relevant Deal Opportunities!\n")
+
+    for deal in opps:
+        deal_id = deal.get("id")
+        savings_agent.mark_notified(user_id, deal_id)
+        profile_manager.add_recently_viewed(user_id, deal)
+
+        reasons = savings_agent.explain_opportunity(user_id, deal)
+        title = deal.get("clean_title", deal.get("title", ""))
+
+        reply = (
+            f"🔥 New Deal Opportunity\n\n"
+            f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
+            f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+            f"📝 Offer: {title}\n"
+            f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
+            f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+            f"📍 Location: {deal.get('display_location')}\n\n"
+            "Why you're seeing this:\n"
+            f"{reasons}"
+        )
+        keyboard = build_deal_keyboard(deal)
+        await update.message.reply_text(reply, reply_markup=keyboard, disable_web_page_preview=True)
+
+
+async def why_this_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    history = profile_manager.get_recently_viewed(user_id)
+
+    if not history:
+        await update.message.reply_text(
+            "💡 Why you see recommendations:\n\n"
+            "Zookout AI uses your search history, saved favourites, typical budget, and preferred locations to match deals to your personal interests.\n\n"
+            "Try searching for deals first!"
+        )
+        return
+
+    last_deal = history[0]
+    reasons = savings_agent.explain_opportunity(user_id, last_deal)
+
+    reply = (
+        f"💡 Why you saw this recommendation:\n\n"
+        f"🏷️ Brand: {last_deal.get('brand', 'N/A')}\n"
+        f"📝 Offer: {last_deal.get('clean_title')}\n\n"
+        "Matching Criteria:\n"
+        f"{reasons}"
+    )
+    await update.message.reply_text(reply)
 
 
 async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, raw_intent: dict):
@@ -582,12 +649,11 @@ async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 I'm not sure what you mean.\n\n"
         "You can ask me things like:\n"
+        "• My Savings\n"
+        "• Show Opportunities\n"
+        "• Recommend something\n"
         "• Romantic dinner in Andheri under ₹2000\n"
-        "• Birthday in Bandra\n"
-        "• Spa tomorrow morning\n"
-        "• Cafe near Powai\n"
-        "• Family lunch\n"
-        "• Weekend outing"
+        "• Why did I get this?"
     )
 
 
@@ -599,9 +665,21 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 11 AI Concierge 2.0 Priority Router
+        # Milestone 12 Customer Savings Agent Priority Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
+            return
+
+        if raw_intent["type"] == "savings":
+            await savings_profile_handler(update, context)
+            return
+
+        if raw_intent["type"] == "opportunities":
+            await opportunities_handler(update, context)
+            return
+
+        if raw_intent["type"] == "why_this":
+            await why_this_handler(update, context)
             return
 
         if raw_intent["type"] == "recent":
@@ -697,7 +775,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await fallback_handler(update, context)
             return
 
-        # Context-Aware Concierge 2.0 Processing
+        # Context-Aware Concierge & Savings Processing
         intent = memory_manager.update_context(user_id, raw_intent)
         if intent["type"] == "search":
             profile_manager.update_profile_from_intent(user_id, intent)
@@ -738,9 +816,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(
                     "I couldn't find an exact match.\n\n"
                     "Try searching for:\n"
-                    "• Romantic dinner in Andheri under ₹2000\n"
-                    "• Birthday in Bandra\n"
-                    "• Spa tomorrow morning"
+                    "• My Savings\n"
+                    "• Show Opportunities\n"
+                    "• Romantic dinner in Andheri under ₹2000"
                 )
             return
 
@@ -816,6 +894,8 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_handler))
+    app.add_handler(CommandHandler("savings", savings_profile_handler))
+    app.add_handler(CommandHandler("opportunities", opportunities_handler))
     app.add_handler(CommandHandler("favourites", favourites_handler))
     app.add_handler(CommandHandler("clear_favourites", clear_favourites_handler))
     app.add_handler(CommandHandler("history", recently_viewed_handler))
@@ -825,7 +905,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Concierge 2.0 Engine...")
+    print("[OK] Zookout AI Bot is running with Customer Savings Agent...")
     app.run_polling()
 
 
