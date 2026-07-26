@@ -87,10 +87,10 @@ PLANNER_TRIGGERS = [
     "plan", "create", "organize", "build", "itinerary", "schedule", "planner"
 ]
 
-SAVINGS_WORDS = ["my savings", "savings", "show savings", "my savings profile", "/savings"]
-OPPORTUNITIES_WORDS = ["show opportunities", "opportunities", "deals for me", "savings opportunities", "new opportunities", "/opportunities"]
-SAVED_DEALS_WORDS = ["saved deals", "my saved deals"]
-WHY_THIS_WORDS = [
+SAVINGS_TRIGGERS = ["my savings", "savings", "show savings", "my savings profile", "/savings"]
+OPPORTUNITY_TRIGGERS = ["show opportunities", "opportunities", "deals for me", "savings opportunities", "new opportunities", "/opportunities"]
+SAVED_DEALS_TRIGGERS = ["saved deals", "my saved deals"]
+WHY_THIS_TRIGGERS = [
     "why did i get this?", "why did i get this", "why this deal?", "why this deal",
     "why this recommendation?", "why this recommendation", "why did i get this deal", "why did i get this deal?"
 ]
@@ -98,7 +98,7 @@ WHY_THIS_WORDS = [
 RECENT_WORDS = ["recent", "recently viewed", "history", "/history"]
 PROFILE_WORDS = ["my preferences", "my profile", "show my interests", "/profile"]
 RESET_PROFILE_WORDS = ["reset profile", "reset preferences", "forget my preferences", "clear history", "/reset_profile"]
-FAVOURITES_WORDS = ["my favourites", "favorites", "saved deals", "favourites", "/favourites"]
+FAVOURITES_WORDS = ["my favourites", "favorites", "favourites", "/favourites"]
 CLEAR_FAVOURITES_WORDS = ["clear favourites", "delete favourites", "/clear_favourites"]
 
 FAQ_QUESTIONS = {
@@ -116,8 +116,8 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    AI Customer Savings Agent & Multi-Constraint NLU Classifier (Milestone 12).
-    Priority: 1. Commands -> 2. Savings & Opportunities -> 3. Greetings -> 4. Help -> 5. FAQ -> 6. Planner -> 7. Occasion -> 8. Comparison -> 9. Pagination -> 10. Recommendations -> 11. Search -> 12. Fallback
+    AI Customer Savings Agent & Multi-Constraint Classifier (Milestone 12.1 Strict Priority Router).
+    Guarantees 'My Savings', 'Show Opportunities', 'Why did I get this?', and 'Recommend something' route to 4 distinct handlers.
     """
     text = (message or "").lower().strip()
 
@@ -142,16 +142,28 @@ def detect_intent(message: str) -> Dict[str, Any]:
         "query": message,
     }
 
-    # 1. System Commands
+    # 1. System Commands & Savings Agent Commands (HIGHEST PRIORITY ROUTING)
     if text in ["/start", "start"]:
         intent["type"] = "greeting"
+        return intent
+
+    if any(st in text for st in SAVINGS_TRIGGERS):
+        intent["type"] = "savings"
+        return intent
+
+    if any(ot in text for ot in OPPORTUNITY_TRIGGERS):
+        intent["type"] = "opportunities"
+        return intent
+
+    if any(wt in text for wt in WHY_THIS_TRIGGERS):
+        intent["type"] = "why_this"
         return intent
 
     if text in RECENT_WORDS:
         intent["type"] = "recent"
         return intent
 
-    if text in FAVOURITES_WORDS or text in SAVED_DEALS_WORDS:
+    if text in FAVOURITES_WORDS or text in SAVED_DEALS_TRIGGERS:
         intent["type"] = "favourites"
         return intent
 
@@ -165,19 +177,6 @@ def detect_intent(message: str) -> Dict[str, Any]:
 
     if text in RESET_PROFILE_WORDS:
         intent["type"] = "reset_profile"
-        return intent
-
-    # Milestone 12 Commands
-    if text in SAVINGS_WORDS:
-        intent["type"] = "savings"
-        return intent
-
-    if text in OPPORTUNITIES_WORDS:
-        intent["type"] = "opportunities"
-        return intent
-
-    if text in WHY_THIS_WORDS:
-        intent["type"] = "why_this"
         return intent
 
     # 2. Greetings Intent

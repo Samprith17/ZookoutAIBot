@@ -147,26 +147,27 @@ async def opportunities_handler(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
 
-    await update.message.reply_text(f"🔥 Customer Savings Agent: Found {len(opps)} Relevant Deal Opportunities!\n")
+    await update.message.reply_text(f"🔥 Customer Savings Opportunities ({len(opps)} items):\n")
 
     for deal in opps:
         deal_id = deal.get("id")
         savings_agent.mark_notified(user_id, deal_id)
         profile_manager.add_recently_viewed(user_id, deal)
 
-        reasons = savings_agent.explain_opportunity(user_id, deal)
+        reasons_list = deal.get("opportunity_reasons", [])
+        reasons_text = "\n".join([f"• {r}" for r in reasons_list]) if reasons_list else "• Popular recommendation"
         title = deal.get("clean_title", deal.get("title", ""))
 
         reply = (
-            f"🔥 New Deal Opportunity\n\n"
+            f"🔥 Deal Opportunity\n\n"
             f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
             f"📂 Category: {deal.get('display_category', 'N/A')}\n"
             f"📝 Offer: {title}\n"
             f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
             f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
             f"📍 Location: {deal.get('display_location')}\n\n"
-            "Why you're seeing this:\n"
-            f"{reasons}"
+            "Why this opportunity:\n"
+            f"{reasons_text}"
         )
         keyboard = build_deal_keyboard(deal)
         await update.message.reply_text(reply, reply_markup=keyboard, disable_web_page_preview=True)
@@ -179,13 +180,13 @@ async def why_this_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not history:
         await update.message.reply_text(
             "💡 Why you see recommendations:\n\n"
-            "Zookout AI uses your search history, saved favourites, typical budget, and preferred locations to match deals to your personal interests.\n\n"
+            "Zookout AI matches deals based on your favourite categories, budget range, preferred areas, and search activity.\n\n"
             "Try searching for deals first!"
         )
         return
 
     last_deal = history[0]
-    reasons = savings_agent.explain_opportunity(user_id, last_deal)
+    reasons = savings_agent.explain_recommendation(user_id, last_deal)
 
     reply = (
         f"💡 Why you saw this recommendation:\n\n"
@@ -665,7 +666,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 12 Customer Savings Agent Priority Router
+        # Milestone 12.1 Customer Savings Agent Isolated Priority Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
             return
@@ -905,7 +906,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Customer Savings Agent...")
+    print("[OK] Zookout AI Bot is running with Complete Customer Savings Agent...")
     app.run_polling()
 
 
