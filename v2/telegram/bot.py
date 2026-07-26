@@ -82,7 +82,7 @@ def get_suggested_next_actions(intent: dict) -> str:
     actions.append(f"• Type \"Plan a {cat} in {loc}\" for a full itinerary")
     actions.append(f"• Type \"Compare {cat}s in {loc}\" for side-by-side comparison")
     actions.append("• Type \"My Savings\" or \"Show Opportunities\" to surface top savings")
-    actions.append("• Type \"Review My Offer\" or \"Growth Suggestions\" for merchant insights")
+    actions.append("• Type \"Review My Offer\" or \"Merchant Dashboard\" for merchant insights")
 
     return "\n".join(actions)
 
@@ -106,6 +106,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Offer Score\n"
         "• Growth Suggestions\n"
         "• Improve Description\n"
+        "• Merchant Dashboard\n"
+        "• Offer Health\n"
+        "• Compare My Offers\n"
         "• How can I get more customers?"
     )
 
@@ -126,7 +129,10 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🏆 Quality Score (`Offer Score`)\n"
         "📈 Growth Advice (`Growth Suggestions`)\n"
         "📝 Copywriting (`Improve Description`)\n"
-        "❓ Merchant Help (`How can I get more customers?`)"
+        "📊 Dashboard (`Merchant Dashboard`)\n"
+        "🩺 Diagnostic (`Offer Health`)\n"
+        "⚖️ Benchmarking (`Compare My Offers`)\n"
+        "❓ Growth Guide (`How can I get more customers?`)"
     )
 
 
@@ -156,6 +162,30 @@ async def merchant_improve_handler(update: Update, context: ContextTypes.DEFAULT
     deal = merchant_agent.get_merchant_deal(user_id)
     improved_text = merchant_agent.suggest_improved_description(deal)
     await update.message.reply_text(improved_text)
+
+
+async def merchant_dashboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    dash_text = merchant_agent.merchant_dashboard(user_id)
+    await update.message.reply_text(dash_text)
+
+
+async def merchant_health_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    health_text = merchant_agent.offer_health(user_id)
+    await update.message.reply_text(health_text)
+
+
+async def merchant_compare_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    comp_text = merchant_agent.compare_offers(user_id)
+    await update.message.reply_text(comp_text)
+
+
+async def merchant_promote_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    prom_text = merchant_agent.promote_offer(user_id)
+    await update.message.reply_text(prom_text)
 
 
 async def merchant_help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -692,6 +722,7 @@ async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Review My Offer\n"
         "• Offer Score\n"
         "• Growth Suggestions\n"
+        "• Merchant Dashboard\n"
         "• How can I get more customers?\n"
         "• Romantic dinner in Andheri under ₹2000"
     )
@@ -705,29 +736,39 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 13 Complete Customer & Merchant Priority Router
+        # Milestone 13.1 Merchant Priority Interception
+        if raw_intent.get("is_merchant") or raw_intent["type"].startswith("merchant_"):
+            if raw_intent["type"] == "merchant_review":
+                await merchant_review_handler(update, context)
+                return
+            if raw_intent["type"] == "merchant_score":
+                await merchant_score_handler(update, context)
+                return
+            if raw_intent["type"] == "merchant_growth":
+                await merchant_growth_handler(update, context)
+                return
+            if raw_intent["type"] in ["merchant_improve", "merchant_improve_help"]:
+                await merchant_improve_handler(update, context)
+                return
+            if raw_intent["type"] == "merchant_dashboard":
+                await merchant_dashboard_handler(update, context)
+                return
+            if raw_intent["type"] == "merchant_health":
+                await merchant_health_handler(update, context)
+                return
+            if raw_intent["type"] == "merchant_compare":
+                await merchant_compare_handler(update, context)
+                return
+            if raw_intent["type"] == "merchant_promote":
+                await merchant_promote_handler(update, context)
+                return
+            if raw_intent["type"] in ["merchant_get_customers", "merchant_help"]:
+                await merchant_help_handler(update, context)
+                return
+
+        # Customer Priority Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
-            return
-
-        if raw_intent["type"] == "merchant_review":
-            await merchant_review_handler(update, context)
-            return
-
-        if raw_intent["type"] == "merchant_score":
-            await merchant_score_handler(update, context)
-            return
-
-        if raw_intent["type"] == "merchant_growth":
-            await merchant_growth_handler(update, context)
-            return
-
-        if raw_intent["type"] == "merchant_improve":
-            await merchant_improve_handler(update, context)
-            return
-
-        if raw_intent["type"] == "merchant_help":
-            await merchant_help_handler(update, context)
             return
 
         if raw_intent["type"] == "savings":
@@ -962,6 +1003,10 @@ def main():
     app.add_handler(CommandHandler("offer_score", merchant_score_handler))
     app.add_handler(CommandHandler("growth", merchant_growth_handler))
     app.add_handler(CommandHandler("improve_desc", merchant_improve_handler))
+    app.add_handler(CommandHandler("merchant_dashboard", merchant_dashboard_handler))
+    app.add_handler(CommandHandler("offer_health", merchant_health_handler))
+    app.add_handler(CommandHandler("compare_offers", merchant_compare_handler))
+    app.add_handler(CommandHandler("promote", merchant_promote_handler))
     app.add_handler(CommandHandler("merchant_help", merchant_help_handler))
     app.add_handler(CommandHandler("favourites", favourites_handler))
     app.add_handler(CommandHandler("clear_favourites", clear_favourites_handler))
@@ -972,7 +1017,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Complete Merchant Growth Agent...")
+    print("[OK] Zookout AI Bot is running with Dedicated Merchant Intent Router...")
     app.run_polling()
 
 

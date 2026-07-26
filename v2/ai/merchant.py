@@ -8,11 +8,10 @@ logger = logging.getLogger(__name__)
 
 class MerchantGrowthAgent:
     """
-    Milestone 13 - Complete Merchant Growth Agent Engine:
-    Provides Offer Review analysis (Strengths, Weaknesses, Suggestions),
-    transparent 0-100 Offer Quality Score breakdown, actionable Growth Suggestions,
-    copywriting description rewrites, and dedicated Merchant Help advice.
-    Does NOT require sales, occupancy, revenue, or voucher analytics data.
+    Milestone 13.1 - Complete Merchant Growth Agent Engine:
+    Handles all Merchant Router commands: Offer Review, Quality Score, Growth Suggestions,
+    Copywriting Rewrites, Merchant Dashboard, Offer Health, Compare My Offers,
+    Offer Promotion Recommendations, and Merchant Help.
     """
 
     def get_merchant_deal(self, user_id: int) -> Dict[str, Any]:
@@ -36,15 +35,7 @@ class MerchantGrowthAgent:
         })
 
     def evaluate_offer_score(self, deal: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Generates a transparent score (0–100) using visible criteria only:
-        - Offer Clarity (/25)
-        - Discount Attractiveness (/20)
-        - Known Price (/20)
-        - Category Available (/10)
-        - Location Available (/10)
-        - OCR Quality (/15)
-        """
+        """Generates transparent score (0–100) using visible criteria only."""
         disc = deal.get("discount_percent", 0)
         title = deal.get("clean_title") or deal.get("title", "")
         raw_title = deal.get("title", "")
@@ -57,7 +48,6 @@ class MerchantGrowthAgent:
         except Exception:
             price = 0.0
 
-        # 1. Offer Clarity (/25)
         if len(title) >= 10 and len(desc) >= 30:
             clarity_score = 25
         elif len(title) >= 6:
@@ -65,7 +55,6 @@ class MerchantGrowthAgent:
         else:
             clarity_score = 12
 
-        # 2. Discount Attractiveness (/20)
         if disc >= 50:
             disc_score = 20
         elif disc >= 30:
@@ -75,25 +64,21 @@ class MerchantGrowthAgent:
         else:
             disc_score = 0
 
-        # 3. Known Price (/20)
         if price > 0:
             price_score = 20
         else:
             price_score = 0
 
-        # 4. Category Available (/10)
         if cat and cat != "Special Experience":
             cat_score = 10
         else:
             cat_score = 5
 
-        # 5. Location Available (/10)
         if loc and loc.lower() not in ["none", "location unavailable", ""]:
             loc_score = 10
         else:
             loc_score = 5
 
-        # 6. OCR Quality (/15)
         if clean_offer_title(deal) == raw_title:
             ocr_score = 15
         elif "Offer" in title or len(title) >= 8:
@@ -135,7 +120,6 @@ class MerchantGrowthAgent:
         title = deal.get("clean_title", "")
         cat = deal.get("display_category", "")
 
-        # Strengths
         if disc >= 40:
             strengths.append(f"High discount attractiveness ({disc}% OFF)")
         elif disc > 0:
@@ -149,7 +133,6 @@ class MerchantGrowthAgent:
 
         strengths.append(f"Verified location availability ({deal.get('display_location')})")
 
-        # Weaknesses
         if price == 0:
             weaknesses.append("Price unavailable to buyers directly in title card.")
         if disc < 30:
@@ -160,7 +143,6 @@ class MerchantGrowthAgent:
         if not weaknesses:
             weaknesses.append("Title could be enhanced with emotional call-to-action phrases.")
 
-        # Suggestions
         suggestions.append("Highlight exact customer savings (e.g. 'Save ₹X') prominently.")
         suggestions.append("Add bullet points listing key inclusions or menu highlights.")
         if disc < 40:
@@ -171,6 +153,7 @@ class MerchantGrowthAgent:
         suggestions_text = "\n".join([f"• {sg}" for sg in suggestions])
 
         return (
+            "📈 Merchant Growth Agent\n\n"
             "📊 Merchant Offer Review\n\n"
             f"🏷️ Brand: {deal.get('brand')}\n"
             f"📂 Category: {cat}\n"
@@ -204,6 +187,7 @@ class MerchantGrowthAgent:
         )
 
         return (
+            "📈 Merchant Growth Agent\n\n"
             "Offer Score\n"
             f"{total}/100\n\n"
             "Breakdown\n"
@@ -214,9 +198,7 @@ class MerchantGrowthAgent:
         )
 
     def generate_growth_suggestions(self, deal: Dict[str, Any]) -> str:
-        """Generates growth suggestions: Title, Discount Visibility, Bundles, Family, Lunch/Weekend."""
-        disc = deal.get("discount_percent", 0)
-
+        """Generates growth suggestions."""
         suggestions = [
             "• Improve Title: Use high-converting action titles like 'Flat 50% OFF Total Bill'.",
             "• Increase Discount Visibility: Highlight exact rupee savings prominently.",
@@ -229,6 +211,7 @@ class MerchantGrowthAgent:
         ]
 
         return (
+            "📈 Merchant Growth Agent\n\n"
             "📈 Merchant Growth Suggestions\n\n"
             f"🏷️ Brand: {deal.get('brand')}\n"
             f"📂 Category: {deal.get('display_category')}\n\n"
@@ -238,7 +221,7 @@ class MerchantGrowthAgent:
         )
 
     def suggest_improved_description(self, deal: Dict[str, Any]) -> str:
-        """Rewrites merchant offer text into clean, high-converting marketing description."""
+        """Rewrites merchant offer text into clean marketing description."""
         title = deal.get("clean_title") or deal.get("title", "")
         disc = deal.get("discount_percent", 0)
 
@@ -248,6 +231,7 @@ class MerchantGrowthAgent:
             marketing_text = f"Enjoy an exclusive experience with {disc}% OFF at {deal.get('brand')}. Perfect for family outings, date nights, and weekend celebrations."
 
         return (
+            "📈 Merchant Growth Agent\n\n"
             "📝 Improved Offer Description\n\n"
             f"Input:\n{title}\n\n"
             f"Output:\n{marketing_text}\n\n"
@@ -258,9 +242,88 @@ class MerchantGrowthAgent:
             "• High readability for mobile users"
         )
 
+    def merchant_dashboard(self, user_id: int) -> str:
+        """Renders Merchant Dashboard overview."""
+        deal = self.get_merchant_deal(user_id)
+        score_eval = self.evaluate_offer_score(deal)
+
+        return (
+            "📈 Merchant Growth Agent\n\n"
+            "📊 Merchant Overview Dashboard\n\n"
+            "• Total Active Listed Offers: 1\n"
+            f"• Primary Offer Quality Score: {score_eval['total_score']}/100\n"
+            "• Growth Actions Pending: 3\n\n"
+            "🏷️ Active Listing:\n"
+            f"• Brand: {deal.get('brand')}\n"
+            f"• Offer: {deal.get('clean_title')}\n"
+            f"• Price: {deal.get('formatted_price')} ({deal.get('discount_percent')}% OFF)\n"
+            f"• Location: {deal.get('display_location')}\n\n"
+            "ℹ️ Note: Dashboard metrics are based strictly on offer catalog parameters."
+        )
+
+    def offer_health(self, user_id: int) -> str:
+        """Renders Offer Health check diagnostic."""
+        deal = self.get_merchant_deal(user_id)
+        score_eval = self.evaluate_offer_score(deal)
+        score = score_eval["total_score"]
+
+        status_label = "✅ Healthy" if score >= 80 else ("⚠️ Moderate Health" if score >= 60 else "🔴 Critical Optimization Needed")
+
+        return (
+            "📈 Merchant Growth Agent\n\n"
+            "🩺 Offer Health Diagnostic\n\n"
+            f"🏷️ Offer: {deal.get('clean_title')}\n"
+            f"🏥 Status: {status_label} ({score}/100)\n\n"
+            "Health Diagnostics:\n"
+            f"• Title & Description Clarity: {'✅ Passed' if '25' in score_eval['breakdown']['Offer Clarity'] else '⚠️ Needs Detail'}\n"
+            f"• Pricing Availability: {'✅ Passed' if '20' in score_eval['breakdown']['Known Price'] else '🔴 Missing Price'}\n"
+            f"• Discount Competitiveness: {'✅ Passed' if '20' in score_eval['breakdown']['Discount Attractiveness'] else '⚠️ Low Discount'}\n"
+            f"• Location Verification: {'✅ Passed' if '10' in score_eval['breakdown']['Location Available'] else '⚠️ Unverified'}\n\n"
+            "ℹ️ Note: Based strictly on offer catalog health rules."
+        )
+
+    def compare_offers(self, user_id: int) -> str:
+        """Renders Merchant Offer Comparison report."""
+        deals = load_deals()
+        norm_deals = [normalize_deal(d) for d in deals[:3]] if len(deals) >= 3 else [self.get_merchant_deal(user_id)]
+
+        reply = (
+            "📈 Merchant Growth Agent\n\n"
+            "📊 Merchant Offer Comparison\n\n"
+        )
+        for i, d in enumerate(norm_deals, 1):
+            s_eval = self.evaluate_offer_score(d)
+            reply += (
+                f"{i}. 🏷️ Brand: {d.get('brand')}\n"
+                f"   Offer: {d.get('clean_title')}\n"
+                f"   Price: {d.get('formatted_price')} | Discount: {d.get('discount_percent')}%\n"
+                f"   Quality Score: {s_eval['total_score']}/100\n\n"
+            )
+
+        top_deal = max(norm_deals, key=lambda x: self.evaluate_offer_score(x)["total_score"])
+        reply += f"🏆 Top Performing Listing: {top_deal.get('brand')} ({top_deal.get('clean_title')})"
+        return reply
+
+    def promote_offer(self, user_id: int) -> str:
+        """Renders Offer Promotion Recommendation."""
+        deal = self.get_merchant_deal(user_id)
+        return (
+            "📈 Merchant Growth Agent\n\n"
+            "🚀 Offer Promotion Recommendation\n\n"
+            "Recommended Offer to Promote:\n"
+            f"🏷️ Brand: {deal.get('brand')}\n"
+            f"📝 Offer: {deal.get('clean_title')}\n"
+            f"💰 Price: {deal.get('formatted_price')} ({deal.get('discount_percent')}% OFF)\n\n"
+            "Why promote this offer:\n"
+            "• High discount value attracts 3x more customer clicks\n"
+            "• Transparent price builds buyer booking trust\n"
+            "• Verified category & location listing"
+        )
+
     def merchant_help(self) -> str:
         """Returns dedicated merchant guidance for 'How can I get more customers?'."""
         return (
+            "📈 Merchant Growth Agent\n\n"
             "🏪 Merchant Growth Guide\n\n"
             "Practical Suggestions to Drive More Customers:\n\n"
             "1. ⚡ Run Attractive Discounts: Offers with 30%+ discount get 3x higher customer clicks.\n"

@@ -1,6 +1,7 @@
 import re
 import logging
 from typing import Dict, List, Any
+from v2.ai.merchant_router import route_merchant_intent
 
 logger = logging.getLogger(__name__)
 
@@ -95,16 +96,6 @@ WHY_THIS_TRIGGERS = [
     "why this recommendation?", "why this recommendation", "why did i get this deal", "why did i get this deal?"
 ]
 
-MERCHANT_REVIEW_TRIGGERS = ["review my offer", "review offer", "review deal", "/review_offer"]
-MERCHANT_SCORE_TRIGGERS = ["offer score", "offer quality score", "quality score", "score offer", "/offer_score"]
-MERCHANT_GROWTH_TRIGGERS = ["growth suggestions", "growth advice", "growth recommendations", "/growth"]
-MERCHANT_IMPROVE_TRIGGERS = ["improve description", "improve title", "/improve_desc"]
-MERCHANT_HELP_TRIGGERS = [
-    "merchant help", "how can i get more customers?", "how can i get more customers",
-    "what offer should i run?", "what offer should i run", "how can i improve this deal?",
-    "how can i improve this deal", "/merchant_help"
-]
-
 RECENT_WORDS = ["recent", "recently viewed", "history", "/history"]
 PROFILE_WORDS = ["my preferences", "my profile", "show my interests", "/profile"]
 RESET_PROFILE_WORDS = ["reset profile", "reset preferences", "forget my preferences", "clear history", "/reset_profile"]
@@ -126,11 +117,16 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    AI Customer & Merchant Growth Agent NLU Classifier (Milestone 13 Priority Router).
-    Routes Merchant Growth commands: Review My Offer, Offer Score, Growth Suggestions, Improve Description, Merchant Help.
-    Guarantees merchant commands NEVER trigger Search, Recommendation Engine, Planner, Savings Agent, or Comparison.
+    AI Customer & Merchant Growth Agent NLU Classifier (Milestone 13.1 Dedicated Merchant Intent Router).
+    Routes all merchant growth, offer review, dashboard, health, and promotion queries into Merchant AI.
+    Guarantees merchant queries NEVER fall back to customer Search, Recommendation Engine, Planner, Savings Agent, or Comparison.
     """
     text = (message or "").lower().strip()
+
+    # 0. Dedicated Merchant Intent Router Interception (HIGHEST PRIORITY)
+    merchant_intent = route_merchant_intent(message)
+    if merchant_intent:
+        return merchant_intent
 
     intent = {
         "type": "fallback",
@@ -153,29 +149,9 @@ def detect_intent(message: str) -> Dict[str, Any]:
         "query": message,
     }
 
-    # 1. System & Merchant Growth Agent Commands (HIGHEST PRIORITY ROUTING)
+    # 1. System Commands & Customer Savings Agent Commands
     if text in ["/start", "start"]:
         intent["type"] = "greeting"
-        return intent
-
-    if any(mrt == text or text.startswith(mrt) for mrt in MERCHANT_REVIEW_TRIGGERS):
-        intent["type"] = "merchant_review"
-        return intent
-
-    if any(mst == text or text.startswith(mst) for mst in MERCHANT_SCORE_TRIGGERS):
-        intent["type"] = "merchant_score"
-        return intent
-
-    if any(mgt == text or text.startswith(mgt) for mgt in MERCHANT_GROWTH_TRIGGERS):
-        intent["type"] = "merchant_growth"
-        return intent
-
-    if any(mit == text or text.startswith(mit) for mit in MERCHANT_IMPROVE_TRIGGERS):
-        intent["type"] = "merchant_improve"
-        return intent
-
-    if any(mht == text or text.startswith(mht) for mht in MERCHANT_HELP_TRIGGERS):
-        intent["type"] = "merchant_help"
         return intent
 
     if any(st in text for st in SAVINGS_TRIGGERS):
