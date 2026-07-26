@@ -71,18 +71,94 @@ def extract_deal_area(deal: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def is_corrupted_title(title: str) -> bool:
+    """
+    Detects if an offer title is corrupted or contains OCR garbage text.
+    Examples of corruption:
+    - 102 A25T %Ae Oricfhf
+    - Random symbols (%Ae, @, #, *, ^)
+    - Broken words & OCR artifacts
+    - Mixed alphanumeric tokens without real words
+    """
+    if not title or not isinstance(title, str):
+        return True
+
+    t = title.strip()
+    if len(t) < 4:
+        return True
+
+    # 1. Invalid symbol patterns: % not preceded by digits (e.g. %Ae), or symbols like @, #, *, ^
+    if re.search(r"(?:^|[^\d\s])%|[@#\*^~$]", t):
+        return True
+
+    # 2. Specific known OCR garbage tokens
+    ocr_junk_regex = r"\b(?:Offline|Anot|Wr|E|St|Cveis|Hpearya|Oitf|Pmaays|Smpiau|Tphree|HThoete|SHyodteelw|Soukb|Gsatalauxryant|Bbiulliyn|Bsuhyo|Midnight|Athyi|Imcpel|Imsaelnotna|Acto|Term Results|Oricfhf|A25T)\b"
+    if re.search(ocr_junk_regex, t, flags=re.IGNORECASE):
+        return True
+
+    words = [w for w in re.findall(r"\S+", t) if w]
+    if not words:
+        return True
+
+    # 3. Check for alphanumeric garbage tokens (e.g. "A25T", "102") or non-vowel gibberish (e.g. "Oricfhf")
+    garbage_count = 0
+    vowel_regex = r"[aeiouyAEIOUY]"
+
+    for w in words:
+        if re.search(r"\b[A-Za-z]+\d+\w*|\b\d+[A-Za-z]+\w*", w):
+            garbage_count += 1
+        elif len(w) >= 4 and not re.search(vowel_regex, w):
+            garbage_count += 1
+        elif re.search(r"[a-z][A-Z]", w):
+            garbage_count += 1
+
+    if garbage_count >= max(1, len(words) // 2):
+        return True
+
+    return False
+
+
+def get_clean_category_fallback(category: str) -> str:
+    """
+    Returns clean human-readable category fallback labels when an offer title is corrupted:
+    - Restaurant -> Special Dining Offer
+    - Spa -> Premium Spa Experience
+    - Salon / Beauty -> Beauty & Grooming Offer
+    - Hotel / Resort -> Hotel Experience
+    - Cafe -> Cafe Special
+    - Entertainment / Gaming / Adventure -> Entertainment Offer
+    - Default -> Special Experience
+    """
+    cat_str = (category or "").lower().strip()
+
+    if "restaurant" in cat_str or "dining" in cat_str or "food" in cat_str:
+        return "Special Dining Offer"
+    if "spa" in cat_str or "massage" in cat_str or "wellness" in cat_str:
+        return "Premium Spa Experience"
+    if "salon" in cat_str or "beauty" in cat_str or "clinic" in cat_str or "hair" in cat_str:
+        return "Beauty & Grooming Offer"
+    if "hotel" in cat_str or "resort" in cat_str or "stay" in cat_str:
+        return "Hotel Experience"
+    if "cafe" in cat_str or "coffee" in cat_str or "bistro" in cat_str:
+        return "Cafe Special"
+    if "entertainment" in cat_str or "adventure" in cat_str or "gaming" in cat_str or "water park" in cat_str or "activity" in cat_str:
+        return "Entertainment Offer"
+
+    return "Special Experience"
+
+
 def clean_offer_title(deal: Dict[str, Any]) -> str:
     """
     Intelligent Offer Title Extraction & OCR Cleanup Engine.
-    Rejects OCR junk, trailing concatenated words, and replaces corrupted titles
-    with clean human-readable titles or generic category fallback labels.
+    Detects corrupted titles and replaces them with clean category fallback labels.
+    Preserves readable titles as-is.
     """
     title = (deal.get("title") or "").strip()
     category = (deal.get("category") or "").strip()
     desc = (deal.get("description") or "").strip()
     full_text = f"{title} {desc}"
 
-    # Specific OCR Junk Patterns
+    # Specific clean pattern matches from description
     if re.search(r"Any\s+Spa\s+Therapy.*Flat\s+50%", full_text, flags=re.IGNORECASE):
         return "Spa Therapy – Flat 50% Off"
 
@@ -120,35 +196,22 @@ def clean_offer_title(deal: Dict[str, Any]) -> str:
             clean = m.group(1).strip()
             clean = re.sub(r"\s+", " ", clean)
             clean = re.sub(r"\b(?:[Bv]uy|sppaaiyre|Bbiulliyn|Bsuhyo|Bvouuyc|vooutc|Athyi|B\s+U\s+Yp|Pmaays)\b.*", "", clean, flags=re.IGNORECASE).strip()
-            if len(clean) >= 5:
+            if len(clean) >= 5 and not is_corrupted_title(clean):
                 return clean[:70].title()
 
-    ocr_junk = r"\b(?:Offline|Anot|Wr|E|St|Cveis|Hpearya|Oitf|Pmaays|Smpiau|Tphree|HThoete|SHyodteelw|Soukb|Gsatalauxryant|Bbiulliyn|Bsuhyo|Midnight|Athyi|Imcpel|Imsaelnotna|Acto|Term Results)\b"
-    if not re.search(ocr_junk, title, flags=re.IGNORECASE):
+    # Check if original title is clean and readable
+    if title and not is_corrupted_title(title):
         cleaned_t = title
         cleaned_t = re.sub(r"\b\d+\s+At\b.*", "", cleaned_t, flags=re.IGNORECASE)
         cleaned_t = re.sub(r"\b[A-Za-z]\s+[A-Za-z]\s+[A-Za-z]\b.*", "", cleaned_t)
         cleaned_t = re.sub(r"\s+", " ", cleaned_t).strip()
         cleaned_t = re.sub(r"\b(?:[Bv]uy|sppaaiyre|Bbiulliyn|Bsuhyo|Bvouuyc|vooutc|Athyi|B\s+U\s+Yp|Pmaays)\b.*", "", cleaned_t, flags=re.IGNORECASE).strip()
 
-        if len(cleaned_t) >= 6 and not cleaned_t.isdigit():
+        if len(cleaned_t) >= 6 and not cleaned_t.isdigit() and not is_corrupted_title(cleaned_t):
             return cleaned_t[:70]
 
-    cat_str = category.lower() if category and category != "Unknown" else "special experience"
-    if "restaurant" in cat_str or "dining" in cat_str or "food" in cat_str:
-        return "Restaurant Offer"
-    if "spa" in cat_str or "massage" in cat_str:
-        return "Spa Offer"
-    if "salon" in cat_str or "beauty" in cat_str:
-        return "Salon Offer"
-    if "cafe" in cat_str or "coffee" in cat_str:
-        return "Cafe Offer"
-    if "hotel" in cat_str or "resort" in cat_str:
-        return "Hotel Offer"
-    if "entertainment" in cat_str or "adventure" in cat_str or "gaming" in cat_str or "water park" in cat_str:
-        return "Entertainment Offer"
-
-    return "Special Offer"
+    # Return clean category fallback if title is corrupted
+    return get_clean_category_fallback(category)
 
 
 def display_category(req_category: Optional[str], deal: Dict[str, Any]) -> str:
@@ -293,7 +356,7 @@ def matches_category(req_category: str, deal: Dict) -> bool:
     if req == "restaurant":
         return cat in ["restaurant", "cafe"] or "restaurant" in text_content or "buffet" in text_content or "thali" in text_content
 
-    if req == "cafe":
+    if req in ["cafe", "coffee"]:
         return cat in ["cafe", "restaurant"] or "cafe" in text_content or "coffee" in text_content or "bistro" in text_content
 
     if req in ["hotel", "resort"]:
