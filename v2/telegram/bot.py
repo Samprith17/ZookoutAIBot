@@ -32,8 +32,45 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def generate_no_deals_response(intent: dict) -> str:
+    """
+    Stage 5: Dataset-Aware 'No Deals Found' Response Engine.
+    Explains requested search criteria, lists available locations & categories, and suggests available searches.
+    """
+    query = intent.get("query") or "your request"
+    cat = intent.get("category")
+    loc = intent.get("location") or intent.get("area") or intent.get("city")
+    max_p = intent.get("max_price")
+
+    criteria = []
+    if cat:
+        criteria.append(f"Category: {cat.title()}")
+    if loc:
+        criteria.append(f"Location: {loc.title()}")
+    if max_p:
+        criteria.append(f"Max Budget: ₹{int(max_p)}")
+
+    crit_text = f" ({', '.join(criteria)})" if criteria else ""
+
+    loc_str = "Mumbai (Andheri, Bandra, Juhu, Powai, Thane, Borivali, Dadar, Worli, Lower Parel, Malad)"
+
+    return (
+        f"🔍 No Deals Found for \"{query}\"{crit_text}\n\n"
+        "We currently don't have active catalog deals matching your exact search criteria.\n\n"
+        "📊 Active Catalog Overview:\n"
+        "• Locations Available: " + loc_str + "\n"
+        "• Categories Available: Restaurant, Salon, Spa, Hotel, Cafe, Entertainment\n"
+        "• Price Range: ₹9 – ₹999\n\n"
+        "💡 Try exploring available catalog searches:\n"
+        "• \"Restaurants in Bandra\"\n"
+        "• \"Spa deals in Andheri\"\n"
+        "• \"Buffet under ₹500\"\n"
+        "• \"Show Opportunities\""
+    )
+
+
 def build_concierge_reasons(deal: dict, intent: dict) -> str:
-    """Generates AI Concierge 2.0 multi-constraint reasoning bullets."""
+    """Generates AI Concierge multi-constraint reasoning bullets."""
     reasons = []
 
     cat = deal.get("display_category") or deal.get("category")
@@ -425,13 +462,8 @@ async def occasion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, r
 
     results = search_deals(intent)
     if not results:
-        fallback_intent = dict(intent)
-        fallback_intent["max_price"] = None
-        fallback_intent["location"] = None
-        results = search_deals(fallback_intent)
-
-    if not results:
-        await update.message.reply_text("I couldn't find deals matching that occasion right now. Try searching for a specific venue or location!")
+        no_deals_msg = generate_no_deals_response(intent)
+        await update.message.reply_text(no_deals_msg)
         return
 
     USER_SEARCH_CACHE[user_id] = results
@@ -493,13 +525,8 @@ async def compare_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
 
     results = search_deals(intent)
     if not results:
-        fallback_intent = dict(intent)
-        fallback_intent["max_price"] = None
-        fallback_intent["location"] = None
-        results = search_deals(fallback_intent)
-
-    if not results:
-        await update.message.reply_text("I couldn't find deals to compare right now. Try searching for a specific category or location!")
+        no_deals_msg = generate_no_deals_response(intent)
+        await update.message.reply_text(no_deals_msg)
         return
 
     comp_deals = [normalize_deal(d) for d in results[:5]]
@@ -550,7 +577,8 @@ async def personalized_recommendations_handler(update: Update, context: ContextT
 
     results = search_deals(p_intent)
     if not results:
-        await update.message.reply_text("I couldn't find personalized deals right now. Try searching for a specific venue or category!")
+        no_deals_msg = generate_no_deals_response(p_intent)
+        await update.message.reply_text(no_deals_msg)
         return
 
     USER_SEARCH_CACHE[user_id] = results
@@ -957,43 +985,8 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         results = search_deals(intent)
 
         if not results:
-            fallback_intent = dict(intent)
-            fallback_intent["max_price"] = None
-            fallback_intent["min_price"] = None
-            fallback_intent["location"] = None
-
-            fallback_results = search_deals(fallback_intent)
-
-            if fallback_results:
-                USER_SEARCH_CACHE[user_id] = fallback_results
-                await update.message.reply_text("I couldn't find an exact match for your budget/location criteria.\n\nHere are the closest matching options:\n")
-
-                for raw_deal in fallback_results[:4]:
-                    deal = normalize_deal(raw_deal)
-                    profile_manager.add_recently_viewed(user_id, deal)
-                    reply = (
-                        f"🏷️ Brand: {deal.get('brand')}\n"
-                        f"📂 Category: {deal.get('display_category')}\n"
-                        f"📝 Offer: {deal.get('clean_title')}\n"
-                        f"💰 Price: {deal.get('formatted_price')}\n"
-                        f"🎁 Discount: {deal.get('discount_percent')}%\n"
-                        f"📍 Location: {deal.get('display_location')}\n"
-                    )
-                    keyboard = build_deal_keyboard(deal)
-                    await update.message.reply_text(reply, reply_markup=keyboard, disable_web_page_preview=True)
-
-                if len(fallback_results) > 4:
-                    p_keyboard = build_pagination_keyboard(offset=4)
-                    await update.message.reply_text("Click below to view more recommendations:", reply_markup=p_keyboard)
-            else:
-                await update.message.reply_text(
-                    "I couldn't find an exact match.\n\n"
-                    "Try searching for:\n"
-                    "• Business Dashboard\n"
-                    "• Category Analytics\n"
-                    "• Create Instagram Post\n"
-                    "• Romantic dinner in Andheri under ₹2000"
-                )
+            no_deals_msg = generate_no_deals_response(intent)
+            await update.message.reply_text(no_deals_msg)
             return
 
         USER_SEARCH_CACHE[user_id] = results
@@ -1100,7 +1093,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Business Intelligence Analytics, AI Content Creator & Merchant Growth Agent...")
+    print("[OK] Zookout AI Bot is running with Stage 5 Search Intelligence & Location Understanding...")
     app.run_polling()
 
 

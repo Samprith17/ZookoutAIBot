@@ -21,15 +21,9 @@ DEALS = load_deals()
 
 def clean_offer_title(deal: Dict[str, Any]) -> str:
     """
-    Intelligent Offer Title Extraction & OCR Cleanup Engine (Milestone 12.3):
+    Intelligent Offer Title Extraction & OCR Cleanup Engine (Milestone 12.3 & Stage 5).
     Rejects OCR junk, trailing concatenated words, and replaces corrupted titles
-    with clean human-readable titles or generic category fallback labels:
-    - Restaurant Offer
-    - Spa Offer
-    - Salon Offer
-    - Entertainment Offer
-    - Cafe Offer
-    - Hotel Offer
+    with clean human-readable titles or generic category fallback labels.
     """
     title = (deal.get("title") or "").strip()
     brand = (deal.get("brand") or "").strip()
@@ -92,7 +86,7 @@ def clean_offer_title(deal: Dict[str, Any]) -> str:
         if len(cleaned_t) >= 6 and not cleaned_t.isdigit():
             return cleaned_t[:70]
 
-    # Fallback using Category (Milestone 12.3 Generic OCR Labels)
+    # Fallback using Category
     cat_str = category.lower() if category and category != "Unknown" else "special experience"
     if "restaurant" in cat_str or "dining" in cat_str or "food" in cat_str:
         return "Restaurant Offer"
@@ -111,7 +105,7 @@ def clean_offer_title(deal: Dict[str, Any]) -> str:
 
 
 def display_category(req_category: Optional[str], deal: Dict[str, Any]) -> str:
-    """Category Normalization (Milestone 12.3): Converts None/N/A/Unknown into clean category strings."""
+    """Category Normalization: Converts None/N/A/Unknown into clean category strings."""
     raw_cat = (deal.get("category") or "").strip()
     title = (deal.get("title") or "").lower()
     desc = (deal.get("description") or "").lower()
@@ -169,9 +163,7 @@ def display_price(deal: Dict[str, Any]) -> str:
 
 def normalize_deal(deal: Dict[str, Any], req_category: Optional[str] = None, req_location: Optional[str] = None) -> Dict[str, Any]:
     """
-    Shared Deal Normalization Layer (Milestone 12.3).
-    Constructs a single normalized deal object reused across Search, Recommendation Engine,
-    Experience Planner, Savings Agent, Comparison, and Personalization.
+    Shared Deal Normalization Layer (Stage 5 Fix: Stops appending ', Mumbai' to non-Mumbai or explicit locations).
     Exposes: Brand, Category, Offer, Price, Discount, Location, Source, Confidence.
     """
     raw_brand = (deal.get("brand") or "").strip()
@@ -188,10 +180,7 @@ def normalize_deal(deal: Dict[str, Any], req_category: Optional[str] = None, req
 
     raw_loc = (deal.get("location") or "").strip()
     if raw_loc and raw_loc.lower() not in ["none", "n/a", "", "null"]:
-        if "mumbai" in raw_loc.lower():
-            display_location = raw_loc.title()
-        else:
-            display_location = f"{raw_loc.title()}, Mumbai"
+        display_location = raw_loc.title()
     else:
         display_location = "Mumbai"
 
@@ -266,9 +255,9 @@ def matches_category(req_category: str, deal: Dict) -> bool:
 
 def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    Search Deals Engine (Milestone 12.3):
-    Ranks deals using the Shared Deal Normalization Layer.
-    Guarantees no 'Category: N/A', 'Location: None', or raw OCR titles.
+    Stage 5 Search Intelligence & Natural-Language Search Engine:
+    - Accurate Location Filtering (Stops incorrect Mumbai deal matching when requesting non-matching locations like Kota, Pune, Aundh).
+    - Natural Language Scoring (Matches query terms, category synonyms, area names, and budget limits).
     """
     deals = load_deals()
     if not deals:
@@ -283,7 +272,15 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     max_price = intent.get("max_price")
     req_preferences = intent.get("preferences") or []
     req_occasion = intent.get("occasion")
-    user_query = intent.get("query")
+    user_query = (intent.get("query") or "").lower().strip()
+
+    target_loc = (req_area or req_location or req_city or "").strip().lower()
+
+    mumbai_areas = {
+        "mumbai", "andheri", "bandra", "powai", "juhu", "thane", "borivali", "dadar", "worli",
+        "lower parel", "malad", "vashi", "airport", "sakinaka", "goregaon", "santacruz", "santa cruz",
+        "ghatkopar", "chembur", "mulund", "kandivali", "colaba", "fort", "bkc", "versova", "lokhandwala"
+    }
 
     scored_results = []
 
@@ -309,10 +306,15 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         if req_category and not matches_category(req_category, deal):
             continue
 
-        # Location Filter
-        if req_area and req_area.lower() not in location_str and "mumbai" not in location_str:
-            if req_location and req_location.lower() not in location_str:
-                continue
+        # Stage 5 Location Filter: Excludes deals if target_loc is a non-Mumbai location (Kota, Pune, Aundh, etc.)
+        if target_loc:
+            if target_loc not in mumbai_areas:
+                if target_loc not in location_str and target_loc not in full_text:
+                    continue
+
+        # Budget Filter
+        if max_price is not None and price > max_price and price > 0:
+            continue
 
         score = 50.0
         reasons = []
@@ -320,33 +322,37 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         # Category Match Score
         if req_category:
             if req_category.lower() in cat_str or req_category.lower() in title.lower():
-                score += 30
+                score += 35
                 reasons.append(f"Matches your requested category ({req_category.title()})")
             else:
                 score += 20
                 reasons.append(f"Relevant deal in {display_category(req_category, deal)}")
 
         # Location Match Score
-        target_loc = req_area or req_location or req_city
         if target_loc:
-            t_loc = target_loc.lower()
-            if t_loc in location_str and t_loc != "mumbai":
-                score += 25
-            elif "mumbai" in location_str or t_loc == "mumbai":
+            if target_loc in location_str or target_loc in full_text:
+                score += 30
+                reasons.append(f"Located in your requested area ({target_loc.title()})")
+            elif target_loc in mumbai_areas:
                 score += 15
 
         # Budget Match Score
         if max_price is not None:
             if price > 0 and price <= max_price:
-                score += 20
-            elif price <= 0:
-                score += 5
-            else:
-                score += 5
+                score += 25
+                reasons.append(f"Fits within budget of ₹{int(max_price)}")
+
+        # Query Word Matching (Natural Language relevance)
+        stopwords = {"in", "the", "a", "an", "for", "under", "below", "deal", "deals", "offer", "offers", "near", "best", "cheap"}
+        query_words = [w for w in re.findall(r"\w+", user_query) if w not in stopwords and len(w) > 2]
+
+        for qw in query_words:
+            if qw in full_text:
+                score += 10
 
         disc = deal.get("discount_percent", 0)
         if disc > 0:
-            score += (disc * 0.1)
+            score += (disc * 0.2)
 
         # Normalize deal via Shared Deal Normalization Layer
         scored_deal = normalize_deal(deal, req_category, target_loc)

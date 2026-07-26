@@ -56,9 +56,80 @@ PREFERENCES = {
     "desserts": ["dessert", "desserts", "cake", "ice cream"]
 }
 
-LOCATIONS = [
-    "andheri", "bandra", "powai", "juhu", "thane", "borivali", "mumbai", "dadar", "worli", "lower parel", "malad", "vashi", "airport"
-]
+# Stage 5 Expanded Catalog & Indian Location Database
+LOCATIONS_MAP = {
+    # Catalog Mumbai Areas
+    "andheri": ("Andheri", "Mumbai"),
+    "bandra": ("Bandra", "Mumbai"),
+    "powai": ("Powai", "Mumbai"),
+    "juhu": ("Juhu", "Mumbai"),
+    "thane": ("Thane", "Mumbai"),
+    "borivali": ("Borivali", "Mumbai"),
+    "mumbai": ("Mumbai", "Mumbai"),
+    "dadar": ("Dadar", "Mumbai"),
+    "worli": ("Worli", "Mumbai"),
+    "lower parel": ("Lower Parel", "Mumbai"),
+    "malad": ("Malad", "Mumbai"),
+    "vashi": ("Vashi", "Mumbai"),
+    "airport": ("Airport", "Mumbai"),
+    "sakinaka": ("Sakinaka", "Mumbai"),
+    "saki naka": ("Sakinaka", "Mumbai"),
+    "goregaon": ("Goregaon", "Mumbai"),
+    "santacruz": ("Santa Cruz", "Mumbai"),
+    "santa cruz": ("Santa Cruz", "Mumbai"),
+    "ghatkopar": ("Ghatkopar", "Mumbai"),
+    "chembur": ("Chembur", "Mumbai"),
+    "mulund": ("Mulund", "Mumbai"),
+    "kandivali": ("Kandivali", "Mumbai"),
+    "colaba": ("Colaba", "Mumbai"),
+    "fort": ("Fort", "Mumbai"),
+    "nariman point": ("Nariman Point", "Mumbai"),
+    "bkc": ("BKC", "Mumbai"),
+    "versova": ("Versova", "Mumbai"),
+    "lokhandwala": ("Lokhandwala", "Mumbai"),
+
+    # Other Major Indian Cities & Sub-Areas
+    "pune": ("Pune", "Pune"),
+    "aundh": ("Aundh", "Pune"),
+    "parihar chowk": ("Parihar Chowk", "Pune"),
+    "baner": ("Baner", "Pune"),
+    "viman nagar": ("Viman Nagar", "Pune"),
+    "koregaon park": ("Koregaon Park", "Pune"),
+    "wakad": ("Wakad", "Pune"),
+    "hinjewadi": ("Hinjewadi", "Pune"),
+
+    "kota": ("Kota", "Kota"),
+    "dadabari": ("Dadabari", "Kota"),
+    "talwandi": ("Talwandi", "Kota"),
+    "vigyan nagar": ("Vigyan Nagar", "Kota"),
+
+    "delhi": ("Delhi", "Delhi"),
+    "new delhi": ("New Delhi", "Delhi"),
+    "noida": ("Noida", "Delhi-NCR"),
+    "gurgaon": ("Gurgaon", "Delhi-NCR"),
+    "gurugram": ("Gurugram", "Delhi-NCR"),
+    "connaught place": ("Connaught Place", "Delhi"),
+    "cp": ("Connaught Place", "Delhi"),
+
+    "bangalore": ("Bangalore", "Bangalore"),
+    "bengaluru": ("Bengaluru", "Bangalore"),
+    "koramangala": ("Koramangala", "Bangalore"),
+    "indiranagar": ("Indiranagar", "Bangalore"),
+    "hsr layout": ("HSR Layout", "Bangalore"),
+    "whitefield": ("Whitefield", "Bangalore"),
+
+    "hyderabad": ("Hyderabad", "Hyderabad"),
+    "gachibowli": ("Gachibowli", "Hyderabad"),
+    "hitech city": ("Hitech City", "Hyderabad"),
+    "jubilee hills": ("Jubilee Hills", "Hyderabad"),
+
+    "chennai": ("Chennai", "Chennai"),
+    "kolkata": ("Kolkata", "Kolkata"),
+    "ahmedabad": ("Ahmedabad", "Ahmedabad"),
+    "jaipur": ("Jaipur", "Jaipur"),
+    "chandigarh": ("Chandigarh", "Chandigarh"),
+    "goa": ("Goa", "Goa"),
+}
 
 GREETINGS = [
     "hi", "hello", "hey", "hi there", "hello bot", "good morning",
@@ -117,13 +188,12 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    AI Customer & Merchant Growth Agent NLU Classifier (Milestone 13.1 Dedicated Merchant Intent Router).
-    Routes all merchant growth, offer review, dashboard, health, and promotion queries into Merchant AI.
-    Guarantees merchant queries NEVER fall back to customer Search, Recommendation Engine, Planner, Savings Agent, or Comparison.
+    AI Customer & Merchant Growth Agent NLU Classifier (Stage 5 Enhanced Search & Location Intelligence).
+    Routes all queries cleanly, extracts locations/categories/budgets accurately, and avoids incorrect fallbacks.
     """
     text = (message or "").lower().strip()
 
-    # 0. Dedicated Merchant Intent Router Interception (HIGHEST PRIORITY)
+    # 0. Dedicated Merchant & Business Intelligence Router Interception (HIGHEST PRIORITY)
     merchant_intent = route_merchant_intent(message)
     if merchant_intent:
         return merchant_intent
@@ -248,15 +318,25 @@ def detect_intent(message: str) -> Dict[str, Any]:
             intent["category"] = category
             break
 
-    for loc in LOCATIONS:
-        if loc in text:
-            intent["location"] = loc.title()
-            if loc == "mumbai":
-                intent["city"] = "Mumbai"
-            else:
-                intent["area"] = loc.title()
-                intent["city"] = "Mumbai"
+    # Stage 5 Location Extraction (Lookup & Pattern Match)
+    loc_match_found = False
+    for loc_key, (area_name, city_name) in LOCATIONS_MAP.items():
+        if re.search(r"\b" + re.escape(loc_key) + r"\b", text):
+            intent["location"] = area_name
+            intent["area"] = area_name if area_name != city_name else None
+            intent["city"] = city_name
+            loc_match_found = True
             break
+
+    if not loc_match_found:
+        # Regex Pattern Location Match (e.g. "deals in X", "in X", "near X", "X deals")
+        pattern_match = re.search(r"\b(?:deals\s+in|deals\s+near|in|near)\s+([a-zA-Z\s]{3,20})\b", text)
+        if pattern_match:
+            candidate = pattern_match.group(1).strip().title()
+            if candidate.lower() not in ["the", "a", "an", "this", "my", "any", "top", "best", "cheap"]:
+                intent["location"] = candidate
+                intent["area"] = candidate
+                intent["city"] = candidate
 
     range_match = re.search(r"(?:between|from)?\s*₹?\s*(\d+)\s*(?:and|to|-)\s*₹?\s*(\d+)", text)
     if range_match:
@@ -301,7 +381,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
         intent["type"] = "personalized"
         return intent
 
-    # 10. Search Intent
+    # 10. Search Intent (Including Location-Only Queries)
     extracted_prefs = []
     for pref, keywords in PREFERENCES.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
@@ -309,7 +389,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
     intent["preferences"] = extracted_prefs
 
     budget_found = intent["max_price"] is not None or intent["min_price"] is not None
-    is_modifier = any(w in text for w in ["cheaper", "luxury", "premium", "budget", "only", "near", "instead"])
+    is_modifier = any(w in text for w in ["cheaper", "luxury", "premium", "budget", "only", "near", "instead", "deal", "deals", "offer", "offers"])
     has_date_time = intent["date"] is not None or intent["time_filter"] is not None or intent["meal_type"] is not None
 
     if intent["category"] or intent["location"] or budget_found or intent["occasion"] or intent["preferences"] or is_modifier or has_date_time:
