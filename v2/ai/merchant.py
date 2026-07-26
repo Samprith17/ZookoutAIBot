@@ -8,10 +8,10 @@ logger = logging.getLogger(__name__)
 
 class MerchantGrowthAgent:
     """
-    Milestone 13.3 - Production-Ready Polished Merchant Growth Agent Engine:
-    Consistent dataset usage across Dashboard & Comparison, transparent scoring explanations,
-    data-backed promotion recommendations (no unsupported click/CTR claims), dynamic issue-driven
-    growth suggestions, and catalog-derived insights.
+    Milestone 13.4 - Production-Ready Consistent Merchant Growth Agent Engine:
+    - Explicit OCR Quality Reporting (Clean OCR Titles: X / N (%)).
+    - Data-Driven Suggestion Engine: Never suggests adding price, location, OCR cleanup, or description if valid data exists.
+    - Unified Normalized Dataset across Dashboard, Comparison, Score, Health, and Promotion.
     """
 
     def get_merchant_dataset(self) -> List[Dict[str, Any]]:
@@ -42,7 +42,8 @@ class MerchantGrowthAgent:
     def evaluate_offer_score(self, deal: Dict[str, Any]) -> Dict[str, Any]:
         """
         Transparent Offer Scoring Engine (0-100).
-        Calculates 6 visible criteria and generates evidence-backed Strengths & Suggestions explaining WHY.
+        Calculates 6 visible criteria and generates evidence-backed Strengths & Suggestions.
+        Strict rule: Never suggests fixing a field that is already valid.
         """
         disc = deal.get("discount_percent", 0)
         title = deal.get("clean_title") or deal.get("title", "")
@@ -121,16 +122,22 @@ class MerchantGrowthAgent:
         if cat_score == 10:
             strengths.append("✓ Clear category")
 
-        # Evidence-Backed Suggestions
+        # Evidence-Backed Suggestions (ISSUE 2 FIX: Strict condition checking)
         suggestions = []
-        if clarity_score < 23:
-            suggestions.append("Improve description readability.")
-        if disc_score < 15:
+        if len(desc) < 30:
+            suggestions.append("Expand description inclusions and readability.")
+
+        if disc < 30:
             suggestions.append("Increase discount percentage to boost competitiveness.")
-        if price_score == 0:
+
+        if price == 0:
             suggestions.append("Display explicit pricing on listing card.")
-        if ocr_score < 15:
+
+        if clean_offer_title(deal) != raw_title:
             suggestions.append("Clean OCR text artifacts in title.")
+
+        if not loc or loc.lower() in ["none", "location unavailable", ""]:
+            suggestions.append("Add verified location details.")
 
         if not suggestions:
             suggestions.append("Maintain high listing clarity & verified parameters.")
@@ -157,7 +164,6 @@ class MerchantGrowthAgent:
         score = score_eval["total_score"]
 
         rating = "🌟 Excellent" if score >= 80 else ("👍 Good" if score >= 60 else ("⚠️ Fair" if score >= 40 else "🔴 Poor"))
-
         disc = deal.get("discount_percent", 0)
 
         strengths_text = "\n".join(score_eval["strengths"]) if score_eval["strengths"] else "• Active catalog listing"
@@ -235,31 +241,25 @@ class MerchantGrowthAgent:
 
         dynamic_suggestions = []
 
-        # Issue 1: Weak title / OCR
         if len(title) < 10 or "Offer" in title:
             dynamic_suggestions.append("• Weak title: Action required → Refine headline to 'Flat 50% OFF Total Bill'")
         else:
             dynamic_suggestions.append("• Title quality: Good → Maintain clear brand & category naming")
 
-        # Issue 2: Missing description
         if len(deal.get("description", "")) < 30:
             dynamic_suggestions.append("• Missing detailed description: Action required → Add bullet points listing menu & venue inclusions")
 
-        # Issue 3: Low discount
         if disc < 30:
             dynamic_suggestions.append("• Low discount: Action required → Test stronger promotional discounts (30%-50% OFF)")
         else:
             dynamic_suggestions.append("• Competitive discount: Highlight exact rupee savings prominently")
 
-        # Issue 4: Missing price
         if price == 0:
             dynamic_suggestions.append("• Missing price: Action required → Display explicit pricing on listing card")
 
-        # Issue 5: Poor OCR
         if deal.get("clean_title") != deal.get("title"):
             dynamic_suggestions.append("• Poor OCR text: Action required → Clean offer title text formatting")
 
-        # Additional practical strategies
         dynamic_suggestions.append("• Off-peak promotions: Run Mon-Thu lunchtime deals to drive quiet hour visits")
         dynamic_suggestions.append("• Combo packages: Pair main courses with complimentary beverages or desserts")
 
@@ -298,7 +298,7 @@ class MerchantGrowthAgent:
         )
 
     def merchant_dashboard(self, user_id: int) -> str:
-        """FEATURE 1 & 5: Merchant Dashboard using consistent normalized dataset."""
+        """FEATURE 1 & 5: Merchant Dashboard with explicit OCR Quality Reporting (ISSUE 1 FIX)."""
         dataset = self.get_merchant_dataset()
         total_offers = len(dataset)
 
@@ -314,19 +314,27 @@ class MerchantGrowthAgent:
         highest_rated_deal, highest_eval = max(evaluated, key=lambda x: x[1]["total_score"], default=(dataset[0], self.evaluate_offer_score(dataset[0])))
 
         avg_score = int(sum(x[1]["total_score"] for x in evaluated) / max(1, len(evaluated)))
-        clean_ocr_count = sum(1 for d in dataset if d.get("clean_title") == d.get("title"))
-        ocr_quality_pct = int((clean_ocr_count / max(1, total_offers)) * 100)
 
-        # Catalog Insights (Derived strictly from catalog data)
+        # Explicit OCR Reporting (ISSUE 1 FIX)
+        clean_ocr_count = sum(1 for d in dataset if d.get("clean_title") == d.get("title"))
+        ocr_artifacts_count = total_offers - clean_ocr_count
+        ocr_pct = int((clean_ocr_count / max(1, total_offers)) * 100)
+
+        ocr_summary = (
+            "OCR Summary\n"
+            f"• Clean OCR Titles: {clean_ocr_count} / {total_offers} ({ocr_pct}%)\n"
+            f"• Offers with OCR Artifacts: {ocr_artifacts_count} / {total_offers}\n"
+            f"• Offers requiring OCR cleanup: {ocr_artifacts_count}"
+        )
+
         missing_prices = sum(1 for d in dataset if float(str(d.get("price", "0")).replace(",", "")) == 0)
-        ocr_issues = sum(1 for d in dataset if d.get("clean_title") != d.get("title"))
         weak_desc = sum(1 for d in dataset if len(d.get("description", "")) < 30)
 
         insights = [
             f"• Highest discount available: {highest_disc_deal.get('discount_percent')}% OFF ({highest_disc_deal.get('brand')})",
             f"• Most common category: {categories[0] if categories else 'Restaurant'}",
             f"• Offers missing pricing details: {missing_prices}",
-            f"• Offers with OCR title artifacts: {ocr_issues}",
+            f"• Offers requiring OCR cleanup: {ocr_artifacts_count}",
             f"• Offers needing description expansion: {weak_desc}"
         ]
 
@@ -339,8 +347,8 @@ class MerchantGrowthAgent:
             f"Categories: {cat_str}\n"
             f"Highest Discount Offer: {highest_disc_deal.get('brand')} ({highest_disc_deal.get('discount_percent')}% OFF)\n"
             f"Highest Rated Offer: {highest_rated_deal.get('brand')} ({highest_eval['total_score']}/100)\n"
-            f"Average Offer Score: {avg_score}/100\n"
-            f"OCR Quality: {ocr_quality_pct}% verified clean\n\n"
+            f"Average Offer Score: {avg_score}/100\n\n"
+            f"{ocr_summary}\n\n"
             "💡 Catalog Insights:\n"
             + "\n".join(insights) + "\n\n"
             "ℹ️ Note: All statistics are calculated dynamically from current catalog listings."
@@ -396,12 +404,11 @@ class MerchantGrowthAgent:
             "Diagnostic Explanation:\n"
             + "\n".join(reasons) + "\n\n"
             "Suggestions:\n"
-            "• Add explicit rupee savings callout to increase offer clarity\n"
-            "• Expand description with dish/service inclusions"
+            + "\n".join([f"• {sg}" for sg in score_eval["suggestions"]])
         )
 
     def compare_offers(self, user_id: int) -> str:
-        """FEATURE 3: Enhanced Merchant Comparison with Best Offer, Runner-up & Needs Improvement."""
+        """FEATURE 3: Enhanced Merchant Comparison (ISSUE 2 FIX: Data-consistent suggestions)."""
         dataset = self.get_merchant_dataset()
         norm_deals = dataset[:3] if len(dataset) >= 3 else dataset
 
@@ -415,6 +422,8 @@ class MerchantGrowthAgent:
 
         for i, (d, ev) in enumerate(sorted_evals, 1):
             strengths_str = ", ".join(ev["strengths"]) if ev["strengths"] else "Listed catalog deal"
+
+            # ISSUE 2 FIX: Accurate weaknesses calculation
             weaknesses = []
             if d.get("discount_percent", 0) < 30:
                 weaknesses.append("Low discount")
@@ -422,6 +431,8 @@ class MerchantGrowthAgent:
                 weaknesses.append("Missing price")
             if len(d.get("description", "")) < 30:
                 weaknesses.append("Brief description")
+            if d.get("clean_title") != d.get("title"):
+                weaknesses.append("OCR artifacts")
 
             weakness_str = ", ".join(weaknesses) if weaknesses else "Minor title optimization"
 
@@ -443,16 +454,18 @@ class MerchantGrowthAgent:
 
         if runner_up:
             runner_eval = sorted_evals[1][1]
-            reply += f"• Runner-up: {runner_up.get('brand')} ({runner_eval['total_score']}/100)\n  Needs: Slight discount bump or description detail\n\n"
+            runner_needs = ", ".join(runner_eval["suggestions"])
+            reply += f"• Runner-up: {runner_up.get('brand')} ({runner_eval['total_score']}/100)\n  Needs: {runner_needs}\n\n"
 
         if needing_imp:
             imp_eval = sorted_evals[-1][1]
-            reply += f"• Offers Needing Improvement: {needing_imp.get('brand')} ({imp_eval['total_score']}/100)\n  Needs: Better description, clear pricing & cleaner OCR"
+            imp_needs = ", ".join(imp_eval["suggestions"])
+            reply += f"• Offers Needing Improvement: {needing_imp.get('brand')} ({imp_eval['total_score']}/100)\n  Needs: {imp_needs}"
 
         return reply
 
     def promote_offer(self, user_id: int) -> str:
-        """FEATURE 4: Evidence-backed Promotion Recommendation (No unsupported click/CTR claims)."""
+        """FEATURE 4: Evidence-backed Promotion Recommendation."""
         dataset = self.get_merchant_dataset()
         evals = [(d, self.evaluate_offer_score(d)) for d in dataset]
         best_deal, best_eval = max(evals, key=lambda x: (x[1]["total_score"], x[0].get("discount_percent", 0)))

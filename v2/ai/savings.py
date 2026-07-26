@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 
 class CustomerSavingsAgent:
     """
-    Milestone 12.3 - Shared Normalization Savings Agent Engine:
-    Reuses the Shared Deal Normalization Layer (normalize_deal) across Search, Recommendations,
-    Experience Planner, Savings Agent, Comparison, and Personalization.
+    Milestone 13.4 - Production-Ready Customer Savings Agent Engine:
+    - Shared Normalization Layer (normalize_deal) across Search, Recommendations, Planner, Savings, Comparison.
+    - Explicit explanation when eligible savings deals < total viewed/saved deals.
     """
 
     def __init__(self):
@@ -30,6 +30,8 @@ class CustomerSavingsAgent:
         """
         Displays dedicated 'My Savings' Response:
         Uses shared profile data from UserProfileManager and explains savings calculation method.
+        Satisfies Milestone 13.4 Issue 3 Savings Consistency:
+        If total viewed/saved deals = N, but only K qualify for savings calculation, explicitly explains why K deals were used.
         """
         profile = profile_manager.get_profile(user_id)
         favs = get_favourites(user_id)
@@ -43,27 +45,47 @@ class CustomerSavingsAgent:
         avg_b = int(sum(profile["budgets"]) / len(profile["budgets"])) if profile["budgets"] else None
         budget_str = f"Under ₹{avg_b}" if avg_b else "Flexible"
 
-        # Calculate estimated savings realized from saved/viewed deals with known prices
-        est_savings = 0.0
-        priced_deals_count = 0
+        total_saved_count = len(favs)
+        total_viewed_count = len(history)
+        all_user_deals = favs + history
+        total_unique_deals = len({d.get("id", str(i)) for i, d in enumerate(all_user_deals)})
 
-        for deal in favs + history:
+        # Calculate estimated savings realized from saved/viewed deals with known prices & discounts
+        est_savings = 0.0
+        eligible_deals_count = 0
+
+        seen_ids = set()
+        for deal in all_user_deals:
+            d_id = deal.get("id", "")
+            if d_id and d_id in seen_ids:
+                continue
+            if d_id:
+                seen_ids.add(d_id)
+
             disc = deal.get("discount_percent", 0)
             try:
                 p = float(str(deal.get("price", "0")).replace(",", ""))
                 if p > 0 and disc > 0:
                     orig = p / max(0.01, (1.0 - (disc / 100.0)))
                     est_savings += (orig - p)
-                    priced_deals_count += 1
+                    eligible_deals_count += 1
             except Exception:
                 pass
 
         last_query = profile["recent_queries"][0] if profile["recent_queries"] else "None"
 
-        if priced_deals_count > 0 and est_savings > 0:
-            savings_str = f"💵 Estimated Tracked Savings: ₹{int(est_savings)}\nℹ️ Calculated from your {priced_deals_count} saved/viewed deals using original list price vs discounted payable price."
+        if eligible_deals_count > 0 and est_savings > 0:
+            savings_str = (
+                f"• Eligible Deals Used for Savings Calculation: {eligible_deals_count}\n"
+                f"💵 Estimated Tracked Savings: ₹{int(est_savings)}"
+            )
+            if eligible_deals_count < max(1, total_unique_deals):
+                reason_note = f"\n\nℹ️ Reason: Only {eligible_deals_count} out of {total_unique_deals} saved/viewed deals contained complete pricing & discount information required for savings calculations."
+            else:
+                reason_note = ""
+            savings_block = f"{savings_str}{reason_note}"
         else:
-            savings_str = "💵 Estimated Tracked Savings: Calculation unavailable (no saved/viewed deals with discount data yet)."
+            savings_block = "• Eligible Deals Used: 0\n💵 Estimated Tracked Savings: ₹0 (No saved/viewed deals with complete discount data yet)."
 
         summary = (
             "💰 Customer Savings Profile\n\n"
@@ -72,12 +94,12 @@ class CustomerSavingsAgent:
             f"💰 Typical Budget: {budget_str}\n"
             f"📍 Preferred Location: {top_loc}\n"
             f"🎉 Preferred Occasion: {top_occ}\n"
-            f"❤️ Saved Favourite Deals: {len(favs)} deals\n"
-            f"📜 Recently Viewed Deals: {len(history)} deals\n"
+            f"❤️ Saved Favourite Deals: {total_saved_count} deals\n"
+            f"📜 Recently Viewed Deals: {total_viewed_count} deals\n"
             f"🔍 Last Recent Search: {last_query}\n"
             f"📊 Total Searches Recorded: {profile['search_count']}\n\n"
-            f"{savings_str}\n\n"
-            "⚠️ Catalog Note: Expiry dates & real-time inventory are unavailable in current dataset. All opportunities reflect active curated deals."
+            f"{savings_block}\n\n"
+            "⚠️ Catalog Note: All opportunities reflect active curated deals."
         )
         return summary
 
