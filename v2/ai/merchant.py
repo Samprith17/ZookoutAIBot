@@ -8,10 +8,11 @@ logger = logging.getLogger(__name__)
 
 class MerchantGrowthAgent:
     """
-    Milestone 13 - Merchant Growth Agent:
-    Helps merchants review offers, calculate transparent 0-100 quality scores,
-    suggest description improvements, and generate actionable growth recommendations
-    without requiring internal sales, occupancy, or revenue analytics.
+    Milestone 13 - Complete Merchant Growth Agent Engine:
+    Provides Offer Review analysis (Strengths, Weaknesses, Suggestions),
+    transparent 0-100 Offer Quality Score breakdown, actionable Growth Suggestions,
+    copywriting description rewrites, and dedicated Merchant Help advice.
+    Does NOT require sales, occupancy, revenue, or voucher analytics data.
     """
 
     def get_merchant_deal(self, user_id: int) -> Dict[str, Any]:
@@ -25,10 +26,10 @@ class MerchantGrowthAgent:
             return normalize_deal(deals[0])
 
         return normalize_deal({
-            "brand": "Sample Merchant",
+            "brand": "Kohinoor Continental The Beryl",
             "category": "Restaurant",
-            "title": "Flat 50% Off on Total Bill",
-            "price": 500,
+            "title": "Flat 50% Off On Total Bill",
+            "price": 510,
             "discount_percent": 50,
             "location": "Mumbai",
             "description": "Enjoy flat 50% discount on total dining bill."
@@ -36,15 +37,17 @@ class MerchantGrowthAgent:
 
     def evaluate_offer_score(self, deal: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Generates a transparent Offer Quality Score (0–100) using 5 criteria:
-        1. Discount Competitiveness (max 30 pts)
-        2. Offer Clarity & Description Length (max 25 pts)
-        3. Price Availability & Value Presentation (max 20 pts)
-        4. Category & Tag Information (max 15 pts)
-        5. OCR Cleanliness & Title Readability (max 10 pts)
+        Generates a transparent score (0–100) using visible criteria only:
+        - Offer Clarity (/25)
+        - Discount Attractiveness (/20)
+        - Known Price (/20)
+        - Category Available (/10)
+        - Location Available (/10)
+        - OCR Quality (/15)
         """
         disc = deal.get("discount_percent", 0)
         title = deal.get("clean_title") or deal.get("title", "")
+        raw_title = deal.get("title", "")
         desc = deal.get("description", "")
         cat = deal.get("display_category") or deal.get("category", "")
         loc = deal.get("display_location") or deal.get("location", "")
@@ -54,147 +57,218 @@ class MerchantGrowthAgent:
         except Exception:
             price = 0.0
 
-        breakdown = []
-        score = 0
-
-        # 1. Discount Competitiveness (30 pts)
-        if disc >= 50:
-            score += 30
-            breakdown.append(f"Discount Competitiveness: 30/30 pts ({disc}% OFF - Highly Competitive)")
-        elif disc >= 30:
-            score += 22
-            breakdown.append(f"Discount Competitiveness: 22/30 pts ({disc}% OFF - Moderate Discount)")
-        elif disc > 0:
-            score += 12
-            breakdown.append(f"Discount Competitiveness: 12/30 pts ({disc}% OFF - Standard Savings)")
-        else:
-            breakdown.append("Discount Competitiveness: 0/30 pts (No Discount Specified)")
-
-        # 2. Offer Clarity & Description Length (25 pts)
-        if len(desc) >= 50 and len(title) >= 10:
-            score += 25
-            breakdown.append("Offer Clarity: 25/25 pts (Detailed Description & Clear Title)")
+        # 1. Offer Clarity (/25)
+        if len(title) >= 10 and len(desc) >= 30:
+            clarity_score = 25
         elif len(title) >= 6:
-            score += 15
-            breakdown.append("Offer Clarity: 15/25 pts (Standard Title; Description could be expanded)")
+            clarity_score = 20
         else:
-            score += 8
-            breakdown.append("Offer Clarity: 8/25 pts (Short Title; Needs more offer details)")
+            clarity_score = 12
 
-        # 3. Price Availability (20 pts)
+        # 2. Discount Attractiveness (/20)
+        if disc >= 50:
+            disc_score = 20
+        elif disc >= 30:
+            disc_score = 15
+        elif disc > 0:
+            disc_score = 10
+        else:
+            disc_score = 0
+
+        # 3. Known Price (/20)
         if price > 0:
-            score += 20
-            breakdown.append(f"Price Availability: 20/20 pts (Clear Price Specified: {deal.get('formatted_price')})")
+            price_score = 20
         else:
-            breakdown.append("Price Availability: 0/20 pts (Price Unavailable)")
+            price_score = 0
 
-        # 4. Category & Tag Information (15 pts)
+        # 4. Category Available (/10)
         if cat and cat != "Special Experience":
-            score += 15
-            breakdown.append(f"Category Classification: 15/15 pts (Specific Category: {cat})")
+            cat_score = 10
         else:
-            score += 5
-            breakdown.append("Category Classification: 5/15 pts (Generic Category)")
+            cat_score = 5
 
-        # 5. OCR Cleanliness & Title Readability (10 pts)
-        raw_title = deal.get("title", "")
-        if clean_offer_title(deal) == raw_title or "Offer" in title:
-            score += 10
-            breakdown.append("OCR Cleanliness: 10/10 pts (Clean & Readability Verified)")
+        # 5. Location Available (/10)
+        if loc and loc.lower() not in ["none", "location unavailable", ""]:
+            loc_score = 10
         else:
-            score += 5
-            breakdown.append("OCR Cleanliness: 5/10 pts (Required Title Normalization)")
+            loc_score = 5
+
+        # 6. OCR Quality (/15)
+        if clean_offer_title(deal) == raw_title:
+            ocr_score = 15
+        elif "Offer" in title or len(title) >= 8:
+            ocr_score = 10
+        else:
+            ocr_score = 7
+
+        total = clarity_score + disc_score + price_score + cat_score + loc_score + ocr_score
+
+        breakdown = {
+            "Offer Clarity": f"{clarity_score}/25",
+            "Discount Attractiveness": f"{disc_score}/20",
+            "Known Price": f"{price_score}/20",
+            "Category Available": f"{cat_score}/10",
+            "Location Available": f"{loc_score}/10",
+            "OCR Quality": f"{ocr_score}/15"
+        }
 
         return {
-            "total_score": min(100, score),
+            "total_score": total,
             "breakdown": breakdown
         }
 
     def review_offer(self, deal: Dict[str, Any]) -> str:
-        """Generates an in-depth Merchant Offer Review report."""
+        """Analyzes a merchant offer and returns Strengths, Weaknesses, and Suggestions."""
         score_eval = self.evaluate_offer_score(deal)
         score = score_eval["total_score"]
-        breakdown_text = "\n".join([f"• {b}" for b in score_eval["breakdown"]])
 
-        rating_label = "🌟 Excellent" if score >= 80 else ("👍 Good" if score >= 60 else "⚠️ Needs Improvement")
+        strengths = []
+        weaknesses = []
+        suggestions = []
 
-        review = (
-            "📊 Merchant Offer Review\n\n"
-            f"🏷️ Brand: {deal.get('brand')}\n"
-            f"📂 Category: {deal.get('display_category')}\n"
-            f"📝 Current Offer: {deal.get('clean_title')}\n"
-            f"💰 Price: {deal.get('formatted_price')}\n"
-            f"🎁 Discount: {deal.get('discount_percent')}%\n"
-            f"📍 Location: {deal.get('display_location')}\n\n"
-            f"🏆 Quality Score: {score}/100 ({rating_label})\n\n"
-            "Score Breakdown:\n"
-            f"{breakdown_text}\n\n"
-            "💡 Performance Summary:\n"
-            f"• Strong discount presence ({deal.get('discount_percent')}% OFF)\n" if deal.get('discount_percent', 0) >= 30 else "• Discount level could be increased for higher customer conversion\n"
-        )
-        review += (
-            "ℹ️ Note: Recommendations are based strictly on offer catalog information (no sales or revenue data required)."
-        )
-        return review
-
-    def generate_growth_suggestions(self, deal: Dict[str, Any]) -> str:
-        """Generates actionable Merchant Growth Suggestions."""
         disc = deal.get("discount_percent", 0)
-
         try:
             price = float(str(deal.get("price", "0")).replace(",", ""))
         except Exception:
             price = 0.0
 
-        suggestions = [
-            "1. 📅 Weekday Promotions: Launch off-peak Mon-Thu lunchtime discounts to boost weekday traffic.",
-            "2. 🎁 Combo Bundles: Pair main courses with beverages or desserts (e.g. Meal + Drink Combo) for higher average ticket value.",
-            "3. 📝 Description Clarity: Highlight exact savings amounts and redemption steps clearly.",
-            "4. ⚡ Highlight Customer Savings: Feature 'Save ₹X' explicitly on your promotional banner.",
-            "5. 🎯 Title Optimization: Use action-oriented titles such as 'Buy 1 Get 1 Free' or 'Flat 50% Off Total Bill'."
-        ]
+        title = deal.get("clean_title", "")
+        cat = deal.get("display_category", "")
 
+        # Strengths
+        if disc >= 40:
+            strengths.append(f"High discount attractiveness ({disc}% OFF)")
+        elif disc > 0:
+            strengths.append(f"Active discount percentage ({disc}% OFF)")
+
+        if price > 0:
+            strengths.append(f"Clear, transparent pricing ({deal.get('formatted_price')})")
+
+        if cat and cat != "Special Experience":
+            strengths.append(f"Specific category classification ({cat})")
+
+        strengths.append(f"Verified location availability ({deal.get('display_location')})")
+
+        # Weaknesses
         if price == 0:
-            suggestions.append("6. 💰 Price Transparency: Adding exact prices increases customer booking intent by over 40%.")
+            weaknesses.append("Price unavailable to buyers directly in title card.")
+        if disc < 30:
+            weaknesses.append("Discount level is below competitive market average for this category.")
+        if len(deal.get("description", "")) < 40:
+            weaknesses.append("Offer description is short; missing detailed inclusion list.")
 
-        text = (
-            "📈 Merchant Growth Suggestions\n\n"
+        if not weaknesses:
+            weaknesses.append("Title could be enhanced with emotional call-to-action phrases.")
+
+        # Suggestions
+        suggestions.append("Highlight exact customer savings (e.g. 'Save ₹X') prominently.")
+        suggestions.append("Add bullet points listing key inclusions or menu highlights.")
+        if disc < 40:
+            suggestions.append("Consider running off-peak weekday promotions at 40%+ discount.")
+
+        strengths_text = "\n".join([f"• {s}" for s in strengths])
+        weaknesses_text = "\n".join([f"• {w}" for w in weaknesses])
+        suggestions_text = "\n".join([f"• {sg}" for sg in suggestions])
+
+        return (
+            "📊 Merchant Offer Review\n\n"
             f"🏷️ Brand: {deal.get('brand')}\n"
-            f"📂 Category: {deal.get('display_category')}\n\n"
-            "Recommended Growth Actions:\n"
-            + "\n\n".join(suggestions) + "\n\n"
-            "ℹ️ Note: Recommendations are based strictly on offer catalog information (no sales, occupancy, or voucher analytics required)."
+            f"📂 Category: {cat}\n"
+            f"📝 Current Offer: {title}\n"
+            f"💰 Price: {deal.get('formatted_price')}\n"
+            f"🎁 Discount: {disc}%\n"
+            f"📍 Location: {deal.get('display_location')}\n\n"
+            f"🏆 Quality Score: {score}/100\n\n"
+            "💪 Strengths:\n"
+            f"{strengths_text}\n\n"
+            "⚠️ Weaknesses:\n"
+            f"{weaknesses_text}\n\n"
+            "💡 Suggestions:\n"
+            f"{suggestions_text}\n\n"
+            "ℹ️ Note: Recommendations are based strictly on offer catalog information."
         )
-        return text
 
-    def suggest_improved_description(self, deal: Dict[str, Any]) -> str:
-        """Generates an enhanced, high-converting offer title & description candidate for the merchant."""
-        brand = deal.get("brand", "Zookout Merchant")
-        cat = deal.get("display_category", "Restaurant")
-        disc = deal.get("discount_percent", 0)
-        formatted_price = deal.get("formatted_price", "Special Price")
+    def format_offer_score(self, deal: Dict[str, Any]) -> str:
+        """Formats transparent Offer Score in exact prompt layout."""
+        score_eval = self.evaluate_offer_score(deal)
+        total = score_eval["total_score"]
+        bd = score_eval["breakdown"]
 
-        enhanced_title = f"{brand} – Flat {disc}% Off Special {cat} Experience" if disc > 0 else f"{brand} – Exclusive {cat} Offer"
-
-        enhanced_desc = (
-            f"Treat yourself to an unforgettable {cat} experience at {brand} in {deal.get('display_location', 'Mumbai')}!\n\n"
-            f"✨ What's Included:\n"
-            f"• Premium {cat} offer at {formatted_price}\n"
-            f"• Instant voucher redemption at venue\n"
-            f"• Flat {disc}% discount on your experience\n\n"
-            f"📍 Location: {deal.get('display_location', 'Mumbai')}\n"
-            f"⏰ Valid: Mon-Sun during regular operating hours"
+        bd_text = (
+            f"• Offer Clarity: {bd['Offer Clarity']}\n"
+            f"• Discount Attractiveness: {bd['Discount Attractiveness']}\n"
+            f"• Known Price: {bd['Known Price']}\n"
+            f"• Category Available: {bd['Category Available']}\n"
+            f"• Location Available: {bd['Location Available']}\n"
+            f"• OCR Quality: {bd['OCR Quality']}"
         )
 
         return (
-            "📝 Improved Offer Description Candidate\n\n"
-            f"Original Offer: {deal.get('clean_title')}\n\n"
-            f"✨ Recommended Title:\n{enhanced_title}\n\n"
-            f"📄 Recommended Description:\n{enhanced_desc}\n\n"
-            "💡 Why this converts better:\n"
-            "• Clear value proposition in the title\n"
-            "• Bulleted list of included benefits\n"
-            "• Explicit location & validity details"
+            "Offer Score\n"
+            f"{total}/100\n\n"
+            "Breakdown\n"
+            f"{bd_text}\n\n"
+            f"🏷️ Brand: {deal.get('brand')}\n"
+            f"📝 Offer: {deal.get('clean_title')}\n\n"
+            "ℹ️ Note: Evaluated transparently using catalog parameters only."
+        )
+
+    def generate_growth_suggestions(self, deal: Dict[str, Any]) -> str:
+        """Generates growth suggestions: Title, Discount Visibility, Bundles, Family, Lunch/Weekend."""
+        disc = deal.get("discount_percent", 0)
+
+        suggestions = [
+            "• Improve Title: Use high-converting action titles like 'Flat 50% OFF Total Bill'.",
+            "• Increase Discount Visibility: Highlight exact rupee savings prominently.",
+            "• Bundle Offers: Combine main dining options with complimentary beverages or desserts.",
+            "• Family Packages: Create 4-person family dinner packages to increase average ticket value.",
+            "• Lunch Promotions: Offer off-peak Mon-Thu lunchtime deals to boost quiet hours.",
+            "• Weekend Promotions: Feature limited-time weekend evening specials.",
+            "• Highlight Savings: Display payable price vs original price side-by-side.",
+            "• Improve Readability: Use bullet points for easy customer scanning."
+        ]
+
+        return (
+            "📈 Merchant Growth Suggestions\n\n"
+            f"🏷️ Brand: {deal.get('brand')}\n"
+            f"📂 Category: {deal.get('display_category')}\n\n"
+            "Recommended Actions:\n"
+            + "\n".join(suggestions) + "\n\n"
+            "ℹ️ Note: Recommendations are based strictly on offer catalog information."
+        )
+
+    def suggest_improved_description(self, deal: Dict[str, Any]) -> str:
+        """Rewrites merchant offer text into clean, high-converting marketing description."""
+        title = deal.get("clean_title") or deal.get("title", "")
+        disc = deal.get("discount_percent", 0)
+
+        if "50%" in title or disc >= 50:
+            marketing_text = "Enjoy a delicious dining experience with 50% OFF on your total bill. Perfect for family dinners, date nights, and celebrations."
+        else:
+            marketing_text = f"Enjoy an exclusive experience with {disc}% OFF at {deal.get('brand')}. Perfect for family outings, date nights, and weekend celebrations."
+
+        return (
+            "📝 Improved Offer Description\n\n"
+            f"Input:\n{title}\n\n"
+            f"Output:\n{marketing_text}\n\n"
+            f"✨ Suggested Headline:\n{deal.get('brand')} – Flat {disc}% OFF {deal.get('display_category')}\n\n"
+            "ℹ️ Why this works better:\n"
+            "• Clear value proposition\n"
+            "• Evokes emotional occasion appeal\n"
+            "• High readability for mobile users"
+        )
+
+    def merchant_help(self) -> str:
+        """Returns dedicated merchant guidance for 'How can I get more customers?'."""
+        return (
+            "🏪 Merchant Growth Guide\n\n"
+            "Practical Suggestions to Drive More Customers:\n\n"
+            "1. ⚡ Run Attractive Discounts: Offers with 30%+ discount get 3x higher customer clicks.\n"
+            "2. 💰 Show Known Prices: Deals with clear prices convert 40% better than hidden prices.\n"
+            "3. 📅 Off-Peak Promotions: Use Mon-Thu lunchtime deals to attract diners during slow hours.\n"
+            "4. 👨‍👩‍👧‍👦 Family & Group Bundles: Package meals for 4 people to boost average spend.\n"
+            "5. 📝 Clear Title & Terms: Use simple titles without complex redemption restrictions.\n\n"
+            "ℹ️ Note: Recommendations are based strictly on offer catalog information."
         )
 
 

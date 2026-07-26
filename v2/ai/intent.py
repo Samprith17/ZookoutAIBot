@@ -97,8 +97,13 @@ WHY_THIS_TRIGGERS = [
 
 MERCHANT_REVIEW_TRIGGERS = ["review my offer", "review offer", "review deal", "/review_offer"]
 MERCHANT_SCORE_TRIGGERS = ["offer score", "offer quality score", "quality score", "score offer", "/offer_score"]
-MERCHANT_GROWTH_TRIGGERS = ["growth suggestions", "growth advice", "growth recommendations", "how can i grow", "/growth"]
-MERCHANT_IMPROVE_TRIGGERS = ["improve description", "how can i improve?", "how can i improve", "improve title", "/improve_desc"]
+MERCHANT_GROWTH_TRIGGERS = ["growth suggestions", "growth advice", "growth recommendations", "/growth"]
+MERCHANT_IMPROVE_TRIGGERS = ["improve description", "improve title", "/improve_desc"]
+MERCHANT_HELP_TRIGGERS = [
+    "merchant help", "how can i get more customers?", "how can i get more customers",
+    "what offer should i run?", "what offer should i run", "how can i improve this deal?",
+    "how can i improve this deal", "/merchant_help"
+]
 
 RECENT_WORDS = ["recent", "recently viewed", "history", "/history"]
 PROFILE_WORDS = ["my preferences", "my profile", "show my interests", "/profile"]
@@ -122,7 +127,8 @@ OUT_OF_SCOPE_KEYWORDS = [
 def detect_intent(message: str) -> Dict[str, Any]:
     """
     AI Customer & Merchant Growth Agent NLU Classifier (Milestone 13 Priority Router).
-    Routes Merchant Growth commands: Review My Offer, Offer Score, Growth Suggestions, Improve Description.
+    Routes Merchant Growth commands: Review My Offer, Offer Score, Growth Suggestions, Improve Description, Merchant Help.
+    Guarantees merchant commands NEVER trigger Search, Recommendation Engine, Planner, Savings Agent, or Comparison.
     """
     text = (message or "").lower().strip()
 
@@ -166,6 +172,10 @@ def detect_intent(message: str) -> Dict[str, Any]:
 
     if any(mit == text or text.startswith(mit) for mit in MERCHANT_IMPROVE_TRIGGERS):
         intent["type"] = "merchant_improve"
+        return intent
+
+    if any(mht == text or text.startswith(mht) for mht in MERCHANT_HELP_TRIGGERS):
+        intent["type"] = "merchant_help"
         return intent
 
     if any(st in text for st in SAVINGS_TRIGGERS):

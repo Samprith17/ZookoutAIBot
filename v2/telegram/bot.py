@@ -105,7 +105,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Review My Offer\n"
         "• Offer Score\n"
         "• Growth Suggestions\n"
-        "• Improve Description"
+        "• Improve Description\n"
+        "• How can I get more customers?"
     )
 
 
@@ -124,7 +125,8 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📊 Offer Review (`Review My Offer`)\n"
         "🏆 Quality Score (`Offer Score`)\n"
         "📈 Growth Advice (`Growth Suggestions`)\n"
-        "📝 Copywriting (`Improve Description`)"
+        "📝 Copywriting (`Improve Description`)\n"
+        "❓ Merchant Help (`How can I get more customers?`)"
     )
 
 
@@ -138,18 +140,8 @@ async def merchant_review_handler(update: Update, context: ContextTypes.DEFAULT_
 async def merchant_score_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
     deal = merchant_agent.get_merchant_deal(user_id)
-    eval_res = merchant_agent.evaluate_offer_score(deal)
-    breakdown_text = "\n".join([f"• {b}" for b in eval_res["breakdown"]])
-
-    reply = (
-        f"🏆 Offer Quality Score: {eval_res['total_score']}/100\n\n"
-        f"🏷️ Brand: {deal.get('brand')}\n"
-        f"📝 Offer: {deal.get('clean_title')}\n\n"
-        "Criteria Breakdown:\n"
-        f"{breakdown_text}\n\n"
-        "ℹ️ Note: Evaluation is based strictly on offer catalog parameters."
-    )
-    await update.message.reply_text(reply)
+    score_text = merchant_agent.format_offer_score(deal)
+    await update.message.reply_text(score_text)
 
 
 async def merchant_growth_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -164,6 +156,11 @@ async def merchant_improve_handler(update: Update, context: ContextTypes.DEFAULT
     deal = merchant_agent.get_merchant_deal(user_id)
     improved_text = merchant_agent.suggest_improved_description(deal)
     await update.message.reply_text(improved_text)
+
+
+async def merchant_help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = merchant_agent.merchant_help()
+    await update.message.reply_text(help_text)
 
 
 async def savings_profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -693,8 +690,9 @@ async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• My Savings\n"
         "• Show Opportunities\n"
         "• Review My Offer\n"
+        "• Offer Score\n"
         "• Growth Suggestions\n"
-        "• Recommend something\n"
+        "• How can I get more customers?\n"
         "• Romantic dinner in Andheri under ₹2000"
     )
 
@@ -707,7 +705,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 13 Customer & Merchant Growth Agent Priority Router
+        # Milestone 13 Complete Customer & Merchant Priority Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
             return
@@ -726,6 +724,10 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if raw_intent["type"] == "merchant_improve":
             await merchant_improve_handler(update, context)
+            return
+
+        if raw_intent["type"] == "merchant_help":
+            await merchant_help_handler(update, context)
             return
 
         if raw_intent["type"] == "savings":
@@ -960,6 +962,7 @@ def main():
     app.add_handler(CommandHandler("offer_score", merchant_score_handler))
     app.add_handler(CommandHandler("growth", merchant_growth_handler))
     app.add_handler(CommandHandler("improve_desc", merchant_improve_handler))
+    app.add_handler(CommandHandler("merchant_help", merchant_help_handler))
     app.add_handler(CommandHandler("favourites", favourites_handler))
     app.add_handler(CommandHandler("clear_favourites", clear_favourites_handler))
     app.add_handler(CommandHandler("history", recently_viewed_handler))
@@ -969,7 +972,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Merchant Growth Agent...")
+    print("[OK] Zookout AI Bot is running with Complete Merchant Growth Agent...")
     app.run_polling()
 
 
