@@ -1,5 +1,5 @@
 """
-Milestone 14 - Merchant Intent Router (Updated with AI Content Creator Routes)
+Milestone 14.2 - Merchant Intent Router (Updated with Dedicated Facebook & Instagram Routes)
 Dedicated router that intercepts all merchant growth, offer review, dashboard, health, promotion, and marketing content creator commands.
 Guarantees merchant queries NEVER fall back to customer search, planner, recommendations, or comparison.
 """
@@ -22,9 +22,9 @@ MERCHANT_ROUTES = {
     "merchant_help": ["merchant help", "merchant guide", "/merchant_help"],
     "merchant_improve_help": ["how can i improve?", "how can i improve", "how to improve", "/how_to_improve"],
 
-    # Milestone 14 AI Content Creator Routes
-    "content_instagram": ["create instagram post", "instagram post", "instagram promo", "/instagram"],
-    "content_facebook": ["create facebook post", "facebook post", "facebook promo", "/facebook"],
+    # Milestone 14 AI Content Creator Routes (Including Facebook Routing Fix)
+    "content_instagram": ["create instagram post", "instagram post", "generate instagram post", "ig post", "instagram promo", "ig promo", "/instagram"],
+    "content_facebook": ["create facebook post", "facebook post", "generate facebook post", "fb post", "facebook promo", "fb promo", "/facebook"],
     "content_whatsapp": ["create whatsapp promotion", "whatsapp promotion", "whatsapp promo", "/whatsapp"],
     "content_sms": ["create sms campaign", "sms campaign", "sms promo", "/sms"],
     "content_push": ["create push notification", "push notification", "push promo", "/push"],
