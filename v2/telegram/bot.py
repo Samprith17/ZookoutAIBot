@@ -15,6 +15,7 @@ from v2.ai.intent import detect_intent
 from v2.ai.memory import memory_manager
 from v2.ai.profile import profile_manager
 from v2.ai.savings import savings_agent
+from v2.ai.merchant import merchant_agent
 from v2.telegram.handlers import (
     USER_SEARCH_CACHE,
     get_favourites,
@@ -81,6 +82,7 @@ def get_suggested_next_actions(intent: dict) -> str:
     actions.append(f"• Type \"Plan a {cat} in {loc}\" for a full itinerary")
     actions.append(f"• Type \"Compare {cat}s in {loc}\" for side-by-side comparison")
     actions.append("• Type \"My Savings\" or \"Show Opportunities\" to surface top savings")
+    actions.append("• Type \"Review My Offer\" or \"Growth Suggestions\" for merchant insights")
 
     return "\n".join(actions)
 
@@ -92,41 +94,76 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"👋 Hello {first_name}!\n\n"
-        "I'm Zookout AI - Customer Savings Agent & AI Concierge.\n\n"
-        "I can help you discover, compare, and automatically surface savings opportunities across:\n\n"
-        "🍽 Restaurants\n"
-        "☕ Cafes\n"
-        "💆 Spas & Salons\n"
-        "🏨 Hotels & Staycations\n"
-        "🎯 Activities & Outings\n\n"
-        "Try asking:\n"
+        "I'm Zookout AI - Customer Savings & Merchant Growth Agent.\n\n"
+        "I can help customers discover & surface top deal savings, AND help merchants optimize offer quality & engagement:\n\n"
+        "🛒 For Customers:\n"
         "• My Savings\n"
         "• Show Opportunities\n"
         "• Recommend something\n"
-        "• Romantic dinner in Andheri under ₹2000\n"
-        "• Why did I get this?"
+        "• Romantic dinner in Andheri under ₹2000\n\n"
+        "🏪 For Merchants:\n"
+        "• Review My Offer\n"
+        "• Offer Score\n"
+        "• Growth Suggestions\n"
+        "• Improve Description"
     )
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 Zookout AI Savings Agent Features\n\n"
-        "Available Commands & Capabilities:\n"
+        "🤖 Zookout AI Agent Features\n\n"
+        "Available Customer Commands:\n"
         "💰 Customer Savings Profile (`My Savings`)\n"
         "🔥 Opportunity Detection (`Show Opportunities`)\n"
         "❓ Recommendation Explanation (`Why did I get this?`)\n"
         "🔍 Multi-Constraint Search (`Romantic dinner in Andheri under ₹2000`)\n"
         "🗓️ AI Experience Planner (`Plan a romantic evening under ₹2000`)\n"
         "📊 Deal Comparison (`Compare restaurants`)\n"
-        "🌟 Smart Personalization (`Recommend something`)\n"
-        "📜 Search History (`Recently Viewed`)\n"
-        "❤️ Saved Favourites (`My Favourites`)\n\n"
-        "Try typing:\n"
-        "• My Savings\n"
-        "• Show Opportunities\n"
-        "• Recommend something\n"
-        "• Why did I get this?"
+        "🌟 Smart Personalization (`Recommend something`)\n\n"
+        "🏪 Merchant Growth Commands:\n"
+        "📊 Offer Review (`Review My Offer`)\n"
+        "🏆 Quality Score (`Offer Score`)\n"
+        "📈 Growth Advice (`Growth Suggestions`)\n"
+        "📝 Copywriting (`Improve Description`)"
     )
+
+
+async def merchant_review_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    deal = merchant_agent.get_merchant_deal(user_id)
+    review_text = merchant_agent.review_offer(deal)
+    await update.message.reply_text(review_text)
+
+
+async def merchant_score_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    deal = merchant_agent.get_merchant_deal(user_id)
+    eval_res = merchant_agent.evaluate_offer_score(deal)
+    breakdown_text = "\n".join([f"• {b}" for b in eval_res["breakdown"]])
+
+    reply = (
+        f"🏆 Offer Quality Score: {eval_res['total_score']}/100\n\n"
+        f"🏷️ Brand: {deal.get('brand')}\n"
+        f"📝 Offer: {deal.get('clean_title')}\n\n"
+        "Criteria Breakdown:\n"
+        f"{breakdown_text}\n\n"
+        "ℹ️ Note: Evaluation is based strictly on offer catalog parameters."
+    )
+    await update.message.reply_text(reply)
+
+
+async def merchant_growth_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    deal = merchant_agent.get_merchant_deal(user_id)
+    growth_text = merchant_agent.generate_growth_suggestions(deal)
+    await update.message.reply_text(growth_text)
+
+
+async def merchant_improve_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
+    deal = merchant_agent.get_merchant_deal(user_id)
+    improved_text = merchant_agent.suggest_improved_description(deal)
+    await update.message.reply_text(improved_text)
 
 
 async def savings_profile_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -655,9 +692,10 @@ async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "You can ask me things like:\n"
         "• My Savings\n"
         "• Show Opportunities\n"
+        "• Review My Offer\n"
+        "• Growth Suggestions\n"
         "• Recommend something\n"
-        "• Romantic dinner in Andheri under ₹2000\n"
-        "• Why did I get this?"
+        "• Romantic dinner in Andheri under ₹2000"
     )
 
 
@@ -669,9 +707,25 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 12.3 Customer Savings Agent Shared Normalization Priority Router
+        # Milestone 13 Customer & Merchant Growth Agent Priority Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
+            return
+
+        if raw_intent["type"] == "merchant_review":
+            await merchant_review_handler(update, context)
+            return
+
+        if raw_intent["type"] == "merchant_score":
+            await merchant_score_handler(update, context)
+            return
+
+        if raw_intent["type"] == "merchant_growth":
+            await merchant_growth_handler(update, context)
+            return
+
+        if raw_intent["type"] == "merchant_improve":
+            await merchant_improve_handler(update, context)
             return
 
         if raw_intent["type"] == "savings":
@@ -823,6 +877,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "Try searching for:\n"
                     "• My Savings\n"
                     "• Show Opportunities\n"
+                    "• Review My Offer\n"
                     "• Romantic dinner in Andheri under ₹2000"
                 )
             return
@@ -901,6 +956,10 @@ def main():
     app.add_handler(CommandHandler("help", help_handler))
     app.add_handler(CommandHandler("savings", savings_profile_handler))
     app.add_handler(CommandHandler("opportunities", opportunities_handler))
+    app.add_handler(CommandHandler("review_offer", merchant_review_handler))
+    app.add_handler(CommandHandler("offer_score", merchant_score_handler))
+    app.add_handler(CommandHandler("growth", merchant_growth_handler))
+    app.add_handler(CommandHandler("improve_desc", merchant_improve_handler))
     app.add_handler(CommandHandler("favourites", favourites_handler))
     app.add_handler(CommandHandler("clear_favourites", clear_favourites_handler))
     app.add_handler(CommandHandler("history", recently_viewed_handler))
@@ -910,7 +969,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Shared Deal Normalization Layer...")
+    print("[OK] Zookout AI Bot is running with Merchant Growth Agent...")
     app.run_polling()
 
 

@@ -95,6 +95,11 @@ WHY_THIS_TRIGGERS = [
     "why this recommendation?", "why this recommendation", "why did i get this deal", "why did i get this deal?"
 ]
 
+MERCHANT_REVIEW_TRIGGERS = ["review my offer", "review offer", "review deal", "/review_offer"]
+MERCHANT_SCORE_TRIGGERS = ["offer score", "offer quality score", "quality score", "score offer", "/offer_score"]
+MERCHANT_GROWTH_TRIGGERS = ["growth suggestions", "growth advice", "growth recommendations", "how can i grow", "/growth"]
+MERCHANT_IMPROVE_TRIGGERS = ["improve description", "how can i improve?", "how can i improve", "improve title", "/improve_desc"]
+
 RECENT_WORDS = ["recent", "recently viewed", "history", "/history"]
 PROFILE_WORDS = ["my preferences", "my profile", "show my interests", "/profile"]
 RESET_PROFILE_WORDS = ["reset profile", "reset preferences", "forget my preferences", "clear history", "/reset_profile"]
@@ -116,8 +121,8 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    AI Customer Savings Agent & Multi-Constraint Classifier (Milestone 12.1 Strict Priority Router).
-    Guarantees 'My Savings', 'Show Opportunities', 'Why did I get this?', and 'Recommend something' route to 4 distinct handlers.
+    AI Customer & Merchant Growth Agent NLU Classifier (Milestone 13 Priority Router).
+    Routes Merchant Growth commands: Review My Offer, Offer Score, Growth Suggestions, Improve Description.
     """
     text = (message or "").lower().strip()
 
@@ -142,9 +147,25 @@ def detect_intent(message: str) -> Dict[str, Any]:
         "query": message,
     }
 
-    # 1. System Commands & Savings Agent Commands (HIGHEST PRIORITY ROUTING)
+    # 1. System & Merchant Growth Agent Commands (HIGHEST PRIORITY ROUTING)
     if text in ["/start", "start"]:
         intent["type"] = "greeting"
+        return intent
+
+    if any(mrt == text or text.startswith(mrt) for mrt in MERCHANT_REVIEW_TRIGGERS):
+        intent["type"] = "merchant_review"
+        return intent
+
+    if any(mst == text or text.startswith(mst) for mst in MERCHANT_SCORE_TRIGGERS):
+        intent["type"] = "merchant_score"
+        return intent
+
+    if any(mgt == text or text.startswith(mgt) for mgt in MERCHANT_GROWTH_TRIGGERS):
+        intent["type"] = "merchant_growth"
+        return intent
+
+    if any(mit == text or text.startswith(mit) for mit in MERCHANT_IMPROVE_TRIGGERS):
+        intent["type"] = "merchant_improve"
         return intent
 
     if any(st in text for st in SAVINGS_TRIGGERS):
