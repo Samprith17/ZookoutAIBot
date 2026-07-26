@@ -17,6 +17,7 @@ from v2.ai.profile import profile_manager
 from v2.ai.savings import savings_agent
 from v2.ai.merchant import merchant_agent
 from v2.ai.content_creator import content_creator_agent
+from v2.ai.analytics import analytics_engine
 from v2.telegram.handlers import (
     USER_SEARCH_CACHE,
     get_favourites,
@@ -83,7 +84,7 @@ def get_suggested_next_actions(intent: dict) -> str:
     actions.append(f"• Type \"Plan a {cat} in {loc}\" for a full itinerary")
     actions.append(f"• Type \"Compare {cat}s in {loc}\" for side-by-side comparison")
     actions.append("• Type \"My Savings\" or \"Show Opportunities\" to surface top savings")
-    actions.append("• Type \"Create Instagram Post\" or \"Merchant Dashboard\" for merchant marketing")
+    actions.append("• Type \"Business Dashboard\" or \"Category Analytics\" for business intelligence")
 
     return "\n".join(actions)
 
@@ -95,19 +96,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"👋 Hello {first_name}!\n\n"
-        "I'm Zookout AI - Customer Savings & Merchant Growth Agent.\n\n"
-        "I can help customers discover top deal savings, AND help merchants generate marketing content & optimize offer health:\n\n"
+        "I'm Zookout AI - Customer Savings, Merchant Growth & Business Intelligence Agent.\n\n"
+        "I can help customers discover deal savings, help merchants generate content, AND provide business analytics:\n\n"
         "🛒 For Customers:\n"
         "• My Savings | Show Opportunities\n"
         "• Romantic dinner in Andheri under ₹2000\n\n"
         "🏪 For Merchants & Content Creators:\n"
         "• Create Instagram Post | Create Facebook Post\n"
-        "• Create WhatsApp Promotion | Create SMS Campaign\n"
-        "• Create Push Notification | Create Promotional Caption\n"
-        "• Generate Hashtags | Festival Promotion\n"
-        "• Weekend Promotion | Birthday Promotion\n"
-        "• Create Email Campaign | Marketing Help\n"
-        "• Merchant Dashboard | Offer Health | Compare My Offers"
+        "• Merchant Dashboard | Offer Health | Compare My Offers\n\n"
+        "📊 For Business Intelligence & Analytics:\n"
+        "• Business Dashboard | Catalog Summary\n"
+        "• Category Analytics | Brand Analytics\n"
+        "• Location Analytics | Discount Analytics\n"
+        "• Price Analytics | Catalog Health\n"
+        "• Offer Distribution | Business Insights\n"
+        "• What should we improve? | Business Help"
     )
 
 
@@ -117,13 +120,13 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Available Customer Commands:\n"
         "💰 Customer Savings Profile (`My Savings`)\n"
         "🔥 Opportunity Detection (`Show Opportunities`)\n"
-        "❓ Recommendation Explanation (`Why did I get this?`)\n"
         "🔍 Multi-Constraint Search (`Romantic dinner in Andheri under ₹2000`)\n"
         "🗓️ AI Experience Planner (`Plan a romantic evening under ₹2000`)\n"
-        "📊 Deal Comparison (`Compare restaurants`)\n"
-        "🌟 Smart Personalization (`Recommend something`)\n\n"
+        "📊 Deal Comparison (`Compare restaurants`)\n\n"
         "🏪 Merchant & AI Content Creator Commands:\n"
-        "📸 `Create Instagram Post` | 📘 `Create Facebook Post` | 💬 `Create WhatsApp Promotion` | 📱 `Create SMS Campaign` | 🔔 `Create Push Notification` | ✍️ `Create Promotional Caption` | 🏷️ `Generate Hashtags` | 🎉 `Festival Promotion` | 🥳 `Weekend Promotion` | 🎂 `Birthday Promotion` | 📧 `Create Email Campaign` | 💡 `Marketing Help` | 📊 `Merchant Dashboard` | 🩺 `Offer Health` | ⚖️ `Compare My Offers`"
+        "📸 `Create Instagram Post` | 📘 `Create Facebook Post` | 💬 `Create WhatsApp Promotion` | 📊 `Merchant Dashboard`\n\n"
+        "📊 Business Intelligence & Analytics Commands:\n"
+        "📊 `Business Dashboard` | 📑 `Catalog Summary` | 📂 `Category Analytics` | 🏷️ `Brand Analytics` | 📍 `Location Analytics` | 🎁 `Discount Analytics` | 💰 `Price Analytics` | 🩺 `Catalog Health` | 📈 `Business Insights` | 🛠️ `What should we improve?`"
     )
 
 
@@ -708,12 +711,11 @@ async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 I'm not sure what you mean.\n\n"
         "You can ask me things like:\n"
+        "• Business Dashboard\n"
+        "• Category Analytics\n"
+        "• Create Instagram Post\n"
         "• My Savings\n"
         "• Show Opportunities\n"
-        "• Create Instagram Post\n"
-        "• Create Facebook Post\n"
-        "• Create WhatsApp Promotion\n"
-        "• Merchant Dashboard\n"
         "• Romantic dinner in Andheri under ₹2000"
     )
 
@@ -725,6 +727,45 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
+
+        # Milestone 15 Business Intelligence & Analytics Interception
+        if raw_intent.get("is_merchant") and raw_intent["type"].startswith("analytics_"):
+            if raw_intent["type"] == "analytics_dashboard":
+                await update.message.reply_text(analytics_engine.generate_business_dashboard())
+                return
+            if raw_intent["type"] == "analytics_summary":
+                await update.message.reply_text(analytics_engine.generate_catalog_summary())
+                return
+            if raw_intent["type"] == "analytics_category":
+                await update.message.reply_text(analytics_engine.generate_category_analytics())
+                return
+            if raw_intent["type"] == "analytics_brand":
+                await update.message.reply_text(analytics_engine.generate_brand_analytics())
+                return
+            if raw_intent["type"] == "analytics_location":
+                await update.message.reply_text(analytics_engine.generate_location_analytics())
+                return
+            if raw_intent["type"] == "analytics_discount":
+                await update.message.reply_text(analytics_engine.generate_discount_analytics())
+                return
+            if raw_intent["type"] == "analytics_price":
+                await update.message.reply_text(analytics_engine.generate_price_analytics())
+                return
+            if raw_intent["type"] == "analytics_health":
+                await update.message.reply_text(analytics_engine.generate_catalog_health())
+                return
+            if raw_intent["type"] == "analytics_distribution":
+                await update.message.reply_text(analytics_engine.generate_offer_distribution())
+                return
+            if raw_intent["type"] == "analytics_insights":
+                await update.message.reply_text(analytics_engine.generate_business_insights())
+                return
+            if raw_intent["type"] == "analytics_improvements":
+                await update.message.reply_text(analytics_engine.generate_improvement_suggestions())
+                return
+            if raw_intent["type"] == "analytics_help":
+                await update.message.reply_text(analytics_engine.generate_business_help())
+                return
 
         # Milestone 14 AI Content Creator Interception
         if raw_intent.get("is_merchant") and raw_intent["type"].startswith("content_"):
@@ -948,8 +989,8 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(
                     "I couldn't find an exact match.\n\n"
                     "Try searching for:\n"
-                    "• My Savings\n"
-                    "• Show Opportunities\n"
+                    "• Business Dashboard\n"
+                    "• Category Analytics\n"
                     "• Create Instagram Post\n"
                     "• Romantic dinner in Andheri under ₹2000"
                 )
@@ -1038,18 +1079,18 @@ def main():
     app.add_handler(CommandHandler("compare_offers", merchant_compare_handler))
     app.add_handler(CommandHandler("promote", merchant_promote_handler))
     app.add_handler(CommandHandler("merchant_help", merchant_help_handler))
-    app.add_handler(CommandHandler("instagram", lambda u, c: u.message.reply_text(content_creator_agent.generate_instagram_post(content_creator_agent.get_deal(u.effective_user.id)))))
-    app.add_handler(CommandHandler("facebook", lambda u, c: u.message.reply_text(content_creator_agent.generate_facebook_post(content_creator_agent.get_deal(u.effective_user.id)))))
-    app.add_handler(CommandHandler("whatsapp", lambda u, c: u.message.reply_text(content_creator_agent.generate_whatsapp_promo(content_creator_agent.get_deal(u.effective_user.id)))))
-    app.add_handler(CommandHandler("sms", lambda u, c: u.message.reply_text(content_creator_agent.generate_sms_campaign(content_creator_agent.get_deal(u.effective_user.id)))))
-    app.add_handler(CommandHandler("push", lambda u, c: u.message.reply_text(content_creator_agent.generate_push_notification(content_creator_agent.get_deal(u.effective_user.id)))))
-    app.add_handler(CommandHandler("caption", lambda u, c: u.message.reply_text(content_creator_agent.generate_promotional_captions(content_creator_agent.get_deal(u.effective_user.id)))))
-    app.add_handler(CommandHandler("hashtags", lambda u, c: u.message.reply_text(content_creator_agent.generate_hashtags(content_creator_agent.get_deal(u.effective_user.id)))))
-    app.add_handler(CommandHandler("festival", lambda u, c: u.message.reply_text(content_creator_agent.generate_festival_promotions(content_creator_agent.get_deal(u.effective_user.id)))))
-    app.add_handler(CommandHandler("weekend_promo", lambda u, c: u.message.reply_text(content_creator_agent.generate_weekend_promotion(content_creator_agent.get_deal(u.effective_user.id)))))
-    app.add_handler(CommandHandler("birthday_promo", lambda u, c: u.message.reply_text(content_creator_agent.generate_birthday_promotion(content_creator_agent.get_deal(u.effective_user.id)))))
-    app.add_handler(CommandHandler("email", lambda u, c: u.message.reply_text(content_creator_agent.generate_email_campaign(content_creator_agent.get_deal(u.effective_user.id)))))
-    app.add_handler(CommandHandler("marketing_help", lambda u, c: u.message.reply_text(content_creator_agent.generate_marketing_help(content_creator_agent.get_deal(u.effective_user.id)))))
+    app.add_handler(CommandHandler("business_dashboard", lambda u, c: u.message.reply_text(analytics_engine.generate_business_dashboard())))
+    app.add_handler(CommandHandler("catalog_summary", lambda u, c: u.message.reply_text(analytics_engine.generate_catalog_summary())))
+    app.add_handler(CommandHandler("category_analytics", lambda u, c: u.message.reply_text(analytics_engine.generate_category_analytics())))
+    app.add_handler(CommandHandler("brand_analytics", lambda u, c: u.message.reply_text(analytics_engine.generate_brand_analytics())))
+    app.add_handler(CommandHandler("location_analytics", lambda u, c: u.message.reply_text(analytics_engine.generate_location_analytics())))
+    app.add_handler(CommandHandler("discount_analytics", lambda u, c: u.message.reply_text(analytics_engine.generate_discount_analytics())))
+    app.add_handler(CommandHandler("price_analytics", lambda u, c: u.message.reply_text(analytics_engine.generate_price_analytics())))
+    app.add_handler(CommandHandler("catalog_health", lambda u, c: u.message.reply_text(analytics_engine.generate_catalog_health())))
+    app.add_handler(CommandHandler("distribution", lambda u, c: u.message.reply_text(analytics_engine.generate_offer_distribution())))
+    app.add_handler(CommandHandler("business_insights", lambda u, c: u.message.reply_text(analytics_engine.generate_business_insights())))
+    app.add_handler(CommandHandler("catalog_improvements", lambda u, c: u.message.reply_text(analytics_engine.generate_improvement_suggestions())))
+    app.add_handler(CommandHandler("business_help", lambda u, c: u.message.reply_text(analytics_engine.generate_business_help())))
     app.add_handler(CommandHandler("favourites", favourites_handler))
     app.add_handler(CommandHandler("clear_favourites", clear_favourites_handler))
     app.add_handler(CommandHandler("history", recently_viewed_handler))
@@ -1059,7 +1100,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with AI Content Creator & Merchant Growth Agent...")
+    print("[OK] Zookout AI Bot is running with Business Intelligence Analytics, AI Content Creator & Merchant Growth Agent...")
     app.run_polling()
 
 
