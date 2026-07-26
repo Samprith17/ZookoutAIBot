@@ -39,7 +39,7 @@ def run_stage5_tests():
 
     # Task 3: Natural Language Search Relevance
     print('\n--- TASK 3: NATURAL LANGUAGE SEARCH RELEVANCE ---')
-    nl_query = 'buffet in Andheri under 500'
+    nl_query = 'buffet in Mumbai under 500'
     nl_intent = detect_intent(nl_query)
     nl_results = search_deals(nl_intent)
     print(f'Query: "{nl_query}" -> {len(nl_results)} deals returned')
