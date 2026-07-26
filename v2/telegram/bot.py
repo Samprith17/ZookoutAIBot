@@ -16,6 +16,7 @@ from v2.ai.memory import memory_manager
 from v2.ai.profile import profile_manager
 from v2.ai.savings import savings_agent
 from v2.ai.merchant import merchant_agent
+from v2.ai.content_creator import content_creator_agent
 from v2.telegram.handlers import (
     USER_SEARCH_CACHE,
     get_favourites,
@@ -82,7 +83,7 @@ def get_suggested_next_actions(intent: dict) -> str:
     actions.append(f"• Type \"Plan a {cat} in {loc}\" for a full itinerary")
     actions.append(f"• Type \"Compare {cat}s in {loc}\" for side-by-side comparison")
     actions.append("• Type \"My Savings\" or \"Show Opportunities\" to surface top savings")
-    actions.append("• Type \"Review My Offer\" or \"Merchant Dashboard\" for merchant insights")
+    actions.append("• Type \"Create Instagram Post\" or \"Merchant Dashboard\" for merchant marketing")
 
     return "\n".join(actions)
 
@@ -95,21 +96,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"👋 Hello {first_name}!\n\n"
         "I'm Zookout AI - Customer Savings & Merchant Growth Agent.\n\n"
-        "I can help customers discover & surface top deal savings, AND help merchants optimize offer quality & engagement:\n\n"
+        "I can help customers discover top deal savings, AND help merchants generate marketing content & optimize offer health:\n\n"
         "🛒 For Customers:\n"
-        "• My Savings\n"
-        "• Show Opportunities\n"
-        "• Recommend something\n"
+        "• My Savings | Show Opportunities\n"
         "• Romantic dinner in Andheri under ₹2000\n\n"
-        "🏪 For Merchants:\n"
-        "• Review My Offer\n"
-        "• Offer Score\n"
-        "• Growth Suggestions\n"
-        "• Improve Description\n"
-        "• Merchant Dashboard\n"
-        "• Offer Health\n"
-        "• Compare My Offers\n"
-        "• How can I get more customers?"
+        "🏪 For Merchants & Content Creators:\n"
+        "• Create Instagram Post | Create Facebook Post\n"
+        "• Create WhatsApp Promotion | Create SMS Campaign\n"
+        "• Create Push Notification | Create Promotional Caption\n"
+        "• Generate Hashtags | Festival Promotion\n"
+        "• Weekend Promotion | Birthday Promotion\n"
+        "• Create Email Campaign | Marketing Help\n"
+        "• Merchant Dashboard | Offer Health | Compare My Offers"
     )
 
 
@@ -124,15 +122,8 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🗓️ AI Experience Planner (`Plan a romantic evening under ₹2000`)\n"
         "📊 Deal Comparison (`Compare restaurants`)\n"
         "🌟 Smart Personalization (`Recommend something`)\n\n"
-        "🏪 Merchant Growth Commands:\n"
-        "📊 Offer Review (`Review My Offer`)\n"
-        "🏆 Quality Score (`Offer Score`)\n"
-        "📈 Growth Advice (`Growth Suggestions`)\n"
-        "📝 Copywriting (`Improve Description`)\n"
-        "📊 Dashboard (`Merchant Dashboard`)\n"
-        "🩺 Diagnostic (`Offer Health`)\n"
-        "⚖️ Benchmarking (`Compare My Offers`)\n"
-        "❓ Growth Guide (`How can I get more customers?`)"
+        "🏪 Merchant & AI Content Creator Commands:\n"
+        "📸 `Create Instagram Post` | 📘 `Create Facebook Post` | 💬 `Create WhatsApp Promotion` | 📱 `Create SMS Campaign` | 🔔 `Create Push Notification` | ✍️ `Create Promotional Caption` | 🏷️ `Generate Hashtags` | 🎉 `Festival Promotion` | 🥳 `Weekend Promotion` | 🎂 `Birthday Promotion` | 📧 `Create Email Campaign` | 💡 `Marketing Help` | 📊 `Merchant Dashboard` | 🩺 `Offer Health` | ⚖️ `Compare My Offers`"
     )
 
 
@@ -719,11 +710,10 @@ async def fallback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "You can ask me things like:\n"
         "• My Savings\n"
         "• Show Opportunities\n"
-        "• Review My Offer\n"
-        "• Offer Score\n"
-        "• Growth Suggestions\n"
+        "• Create Instagram Post\n"
+        "• Create Facebook Post\n"
+        "• Create WhatsApp Promotion\n"
         "• Merchant Dashboard\n"
-        "• How can I get more customers?\n"
         "• Romantic dinner in Andheri under ₹2000"
     )
 
@@ -736,7 +726,47 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 13.1 Merchant Priority Interception
+        # Milestone 14 AI Content Creator Interception
+        if raw_intent.get("is_merchant") and raw_intent["type"].startswith("content_"):
+            deal = content_creator_agent.get_deal(user_id)
+            if raw_intent["type"] == "content_instagram":
+                await update.message.reply_text(content_creator_agent.generate_instagram_post(deal))
+                return
+            if raw_intent["type"] == "content_facebook":
+                await update.message.reply_text(content_creator_agent.generate_facebook_post(deal))
+                return
+            if raw_intent["type"] == "content_whatsapp":
+                await update.message.reply_text(content_creator_agent.generate_whatsapp_promo(deal))
+                return
+            if raw_intent["type"] == "content_sms":
+                await update.message.reply_text(content_creator_agent.generate_sms_campaign(deal))
+                return
+            if raw_intent["type"] == "content_push":
+                await update.message.reply_text(content_creator_agent.generate_push_notification(deal))
+                return
+            if raw_intent["type"] == "content_caption":
+                await update.message.reply_text(content_creator_agent.generate_promotional_captions(deal))
+                return
+            if raw_intent["type"] == "content_hashtags":
+                await update.message.reply_text(content_creator_agent.generate_hashtags(deal))
+                return
+            if raw_intent["type"] == "content_festival":
+                await update.message.reply_text(content_creator_agent.generate_festival_promotions(deal))
+                return
+            if raw_intent["type"] == "content_weekend":
+                await update.message.reply_text(content_creator_agent.generate_weekend_promotion(deal))
+                return
+            if raw_intent["type"] == "content_birthday":
+                await update.message.reply_text(content_creator_agent.generate_birthday_promotion(deal))
+                return
+            if raw_intent["type"] == "content_email":
+                await update.message.reply_text(content_creator_agent.generate_email_campaign(deal))
+                return
+            if raw_intent["type"] == "content_help":
+                await update.message.reply_text(content_creator_agent.generate_marketing_help(deal))
+                return
+
+        # Milestone 13 Merchant Router Interception
         if raw_intent.get("is_merchant") or raw_intent["type"].startswith("merchant_"):
             if raw_intent["type"] == "merchant_review":
                 await merchant_review_handler(update, context)
@@ -920,7 +950,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "Try searching for:\n"
                     "• My Savings\n"
                     "• Show Opportunities\n"
-                    "• Review My Offer\n"
+                    "• Create Instagram Post\n"
                     "• Romantic dinner in Andheri under ₹2000"
                 )
             return
@@ -1008,6 +1038,18 @@ def main():
     app.add_handler(CommandHandler("compare_offers", merchant_compare_handler))
     app.add_handler(CommandHandler("promote", merchant_promote_handler))
     app.add_handler(CommandHandler("merchant_help", merchant_help_handler))
+    app.add_handler(CommandHandler("instagram", lambda u, c: u.message.reply_text(content_creator_agent.generate_instagram_post(content_creator_agent.get_deal(u.effective_user.id)))))
+    app.add_handler(CommandHandler("facebook", lambda u, c: u.message.reply_text(content_creator_agent.generate_facebook_post(content_creator_agent.get_deal(u.effective_user.id)))))
+    app.add_handler(CommandHandler("whatsapp", lambda u, c: u.message.reply_text(content_creator_agent.generate_whatsapp_promo(content_creator_agent.get_deal(u.effective_user.id)))))
+    app.add_handler(CommandHandler("sms", lambda u, c: u.message.reply_text(content_creator_agent.generate_sms_campaign(content_creator_agent.get_deal(u.effective_user.id)))))
+    app.add_handler(CommandHandler("push", lambda u, c: u.message.reply_text(content_creator_agent.generate_push_notification(content_creator_agent.get_deal(u.effective_user.id)))))
+    app.add_handler(CommandHandler("caption", lambda u, c: u.message.reply_text(content_creator_agent.generate_promotional_captions(content_creator_agent.get_deal(u.effective_user.id)))))
+    app.add_handler(CommandHandler("hashtags", lambda u, c: u.message.reply_text(content_creator_agent.generate_hashtags(content_creator_agent.get_deal(u.effective_user.id)))))
+    app.add_handler(CommandHandler("festival", lambda u, c: u.message.reply_text(content_creator_agent.generate_festival_promotions(content_creator_agent.get_deal(u.effective_user.id)))))
+    app.add_handler(CommandHandler("weekend_promo", lambda u, c: u.message.reply_text(content_creator_agent.generate_weekend_promotion(content_creator_agent.get_deal(u.effective_user.id)))))
+    app.add_handler(CommandHandler("birthday_promo", lambda u, c: u.message.reply_text(content_creator_agent.generate_birthday_promotion(content_creator_agent.get_deal(u.effective_user.id)))))
+    app.add_handler(CommandHandler("email", lambda u, c: u.message.reply_text(content_creator_agent.generate_email_campaign(content_creator_agent.get_deal(u.effective_user.id)))))
+    app.add_handler(CommandHandler("marketing_help", lambda u, c: u.message.reply_text(content_creator_agent.generate_marketing_help(content_creator_agent.get_deal(u.effective_user.id)))))
     app.add_handler(CommandHandler("favourites", favourites_handler))
     app.add_handler(CommandHandler("clear_favourites", clear_favourites_handler))
     app.add_handler(CommandHandler("history", recently_viewed_handler))
@@ -1017,7 +1059,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Dedicated Merchant Intent Router...")
+    print("[OK] Zookout AI Bot is running with AI Content Creator & Merchant Growth Agent...")
     app.run_polling()
 
 
