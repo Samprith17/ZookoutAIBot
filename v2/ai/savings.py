@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, List, Any, Optional
 from v2.ai.profile import profile_manager
-from v2.search.search_engine import load_deals, clean_offer_title, display_category, display_price
+from v2.search.search_engine import load_deals, normalize_deal, display_category
 from v2.telegram.handlers import get_favourites
 
 logger = logging.getLogger(__name__)
@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 
 class CustomerSavingsAgent:
     """
-    Milestone 12.2 - Refined Customer Savings Agent Engine:
-    Reuses shared UserProfileManager data, filters complete records with known prices,
-    explains savings calculation methodology, and generates accurate non-fictional explanations.
+    Milestone 12.3 - Shared Normalization Savings Agent Engine:
+    Reuses the Shared Deal Normalization Layer (normalize_deal) across Search, Recommendations,
+    Experience Planner, Savings Agent, Comparison, and Personalization.
     """
 
     def __init__(self):
@@ -83,7 +83,7 @@ class CustomerSavingsAgent:
 
     def detect_opportunities(self, user_id: int, limit: int = 4) -> List[Dict[str, Any]]:
         """
-        Detects refined deal opportunities using shared profile data:
+        Detects refined deal opportunities using the Shared Deal Normalization Layer:
         Prefers complete records (known price > 0, valid category, valid location, clean title).
         """
         profile = profile_manager.get_profile(user_id)
@@ -114,7 +114,7 @@ class CustomerSavingsAgent:
             cat = (deal.get("category") or "").strip()
             loc = (deal.get("location") or "").strip()
 
-            is_complete = price > 0 and cat != "Unknown" and loc.lower() not in ["", "none"]
+            is_complete = price > 0 and cat != "Unknown" and loc.lower() not in ["", "none", "null"]
 
             if is_complete:
                 complete_priced_deals.append(deal)
@@ -165,39 +165,19 @@ class CustomerSavingsAgent:
                 reasons.append("Saved in your favourites")
 
             if score > 0:
-                cleaned_title = clean_offer_title(deal)
-                norm_category = display_category(top_cat, deal)
-                formatted_price = display_price(deal)
-                loc_raw = (deal.get("location") or "").strip()
-                disp_loc = f"{loc_raw}, Mumbai" if loc_raw and loc_raw.lower() not in ["mumbai", "none"] else "Mumbai"
-
-                deal_copy = dict(deal)
-                deal_copy["clean_title"] = cleaned_title
-                deal_copy["display_category"] = norm_category
-                deal_copy["formatted_price"] = formatted_price
-                deal_copy["display_location"] = disp_loc
+                deal_copy = normalize_deal(deal, top_cat, top_loc)
                 deal_copy["opportunity_score"] = score
                 deal_copy["opportunity_reasons"] = reasons
                 scored_deals.append(deal_copy)
 
         if not scored_deals:
             for deal in candidate_pool[:limit]:
-                cleaned_title = clean_offer_title(deal)
-                norm_category = display_category(top_cat, deal)
-                formatted_price = display_price(deal)
-                loc_raw = (deal.get("location") or "").strip()
-                disp_loc = f"{loc_raw}, Mumbai" if loc_raw and loc_raw.lower() not in ["mumbai", "none"] else "Mumbai"
-
-                deal_copy = dict(deal)
-                deal_copy["clean_title"] = cleaned_title
-                deal_copy["display_category"] = norm_category
-                deal_copy["formatted_price"] = formatted_price
-                deal_copy["display_location"] = disp_loc
+                deal_copy = normalize_deal(deal, top_cat, top_loc)
                 deal_copy["opportunity_score"] = 1.0
                 deal_copy["opportunity_reasons"] = ["Popular recommendation"]
                 scored_deals.append(deal_copy)
 
-        scored_deals.sort(key=lambda x: x["opportunity_score"], reverse=True)
+        scored_deals.sort(key=lambda x: (x["confidence"], x["opportunity_score"]), reverse=True)
         return scored_deals[:limit]
 
     def explain_recommendation(self, user_id: int, deal: Dict[str, Any]) -> str:

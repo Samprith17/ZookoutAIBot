@@ -10,7 +10,7 @@ from telegram.ext import (
 )
 
 from config import BOT_TOKEN
-from v2.search.search_engine import search_deals
+from v2.search.search_engine import search_deals, normalize_deal
 from v2.ai.intent import detect_intent
 from v2.ai.memory import memory_manager
 from v2.ai.profile import profile_manager
@@ -37,7 +37,7 @@ def build_concierge_reasons(deal: dict, intent: dict) -> str:
     if cat:
         reasons.append(f"Top-rated {cat} experience matching your request.")
 
-    loc = deal.get("display_location")
+    loc = deal.get("display_location") or deal.get("location")
     req_loc = intent.get("area") or intent.get("location")
     if req_loc and loc and req_loc.lower() in loc.lower():
         reasons.append(f"Located right in your requested area ({req_loc}).")
@@ -149,22 +149,22 @@ async def opportunities_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     await update.message.reply_text(f"🔥 Customer Savings Opportunities ({len(opps)} items):\n")
 
-    for deal in opps:
+    for raw_deal in opps:
+        deal = normalize_deal(raw_deal)
         deal_id = deal.get("id")
         savings_agent.mark_notified(user_id, deal_id)
         profile_manager.add_recently_viewed(user_id, deal)
 
-        reasons_list = deal.get("opportunity_reasons", [])
+        reasons_list = raw_deal.get("opportunity_reasons", [])
         reasons_text = "\n".join([f"• {r}" for r in reasons_list]) if reasons_list else "• Popular recommendation"
-        title = deal.get("clean_title", deal.get("title", ""))
 
         reply = (
             f"🔥 Deal Opportunity\n\n"
-            f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
-            f"📂 Category: {deal.get('display_category', 'N/A')}\n"
-            f"📝 Offer: {title}\n"
-            f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
-            f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+            f"🏷️ Brand: {deal.get('brand')}\n"
+            f"📂 Category: {deal.get('display_category')}\n"
+            f"📝 Offer: {deal.get('clean_title')}\n"
+            f"💰 Price: {deal.get('formatted_price')}\n"
+            f"🎁 Discount: {deal.get('discount_percent')}%\n"
             f"📍 Location: {deal.get('display_location')}\n\n"
             "Why this opportunity:\n"
             f"{reasons_text}"
@@ -185,12 +185,12 @@ async def why_this_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    last_deal = history[0]
+    last_deal = normalize_deal(history[0])
     reasons = savings_agent.explain_recommendation(user_id, last_deal)
 
     reply = (
         f"💡 Why you saw this recommendation:\n\n"
-        f"🏷️ Brand: {last_deal.get('brand', 'N/A')}\n"
+        f"🏷️ Brand: {last_deal.get('brand')}\n"
         f"📝 Offer: {last_deal.get('clean_title')}\n\n"
         "Matching Criteria:\n"
         f"{reasons}"
@@ -299,7 +299,7 @@ async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
             candidate_deals = [d for d in candidate_deals if d.get("brand") not in used_brands]
 
             if candidate_deals:
-                selected_deal = candidate_deals[0]
+                selected_deal = normalize_deal(candidate_deals[0])
                 break
 
         if not selected_deal:
@@ -316,7 +316,8 @@ async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
                 candidate_deals = [d for d in candidate_deals if d.get("brand") not in used_brands]
                 if candidate_deals:
                     valid_priced = [d for d in candidate_deals if float(str(d.get("price", "0")).replace(",", "")) > 0]
-                    selected_deal = min(valid_priced, key=lambda x: float(str(x.get("price", "999999")).replace(",", "")), default=candidate_deals[0])
+                    raw_selected = min(valid_priced, key=lambda x: float(str(x.get("price", "999999")).replace(",", "")), default=candidate_deals[0])
+                    selected_deal = normalize_deal(raw_selected)
                     break
 
         if selected_deal:
@@ -334,10 +335,10 @@ async def planner_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
     for header, deal in itinerary_items:
         reply += (
             f"{header}\n"
-            f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
-            f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+            f"🏷️ Brand: {deal.get('brand')}\n"
+            f"📂 Category: {deal.get('display_category')}\n"
             f"📝 Offer: {deal.get('clean_title')}\n"
-            f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
+            f"💰 Price: {deal.get('formatted_price')}\n"
             f"📍 Location: {deal.get('display_location')}\n\n"
         )
 
@@ -376,8 +377,8 @@ async def occasion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, r
         return
 
     USER_SEARCH_CACHE[user_id] = results
-    best_match = results[0]
-    other_matches = results[1:4]
+    best_match = normalize_deal(results[0])
+    other_matches = [normalize_deal(d) for d in results[1:4]]
 
     for d in results[:4]:
         profile_manager.add_recently_viewed(user_id, d)
@@ -389,11 +390,11 @@ async def occasion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, r
     best_reply = (
         f"❤️ Occasion Detected: {occ_title}\n\n"
         "⭐ Best Match\n\n"
-        f"🏷️ Brand: {best_match.get('brand', 'N/A')}\n"
-        f"📂 Category: {best_match.get('display_category', 'N/A')}\n"
+        f"🏷️ Brand: {best_match.get('brand')}\n"
+        f"📂 Category: {best_match.get('display_category')}\n"
         f"📝 Offer: {best_match.get('clean_title')}\n"
-        f"💰 Estimated Price: {best_match.get('formatted_price', 'Price not available')}\n"
-        f"🎁 Discount: {best_match.get('discount_percent', 0)}%\n"
+        f"💰 Estimated Price: {best_match.get('formatted_price')}\n"
+        f"🎁 Discount: {best_match.get('discount_percent')}%\n"
         f"📍 Location: {best_match.get('display_location')}\n\n"
         "📝 Reasoning:\n"
         f"{reasons_text}\n\n"
@@ -407,11 +408,11 @@ async def occasion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, r
         await update.message.reply_text("━━━━━━━━━━━━━━━━━━\n\n🎯 Other Occasion Recommendations:")
         for deal in other_matches:
             reply = (
-                f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
-                f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+                f"🏷️ Brand: {deal.get('brand')}\n"
+                f"📂 Category: {deal.get('display_category')}\n"
                 f"📝 Offer: {deal.get('clean_title')}\n"
-                f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
-                f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+                f"💰 Price: {deal.get('formatted_price')}\n"
+                f"🎁 Discount: {deal.get('discount_percent')}%\n"
                 f"📍 Location: {deal.get('display_location')}\n"
             )
             keyboard = build_deal_keyboard(deal)
@@ -443,7 +444,7 @@ async def compare_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
         await update.message.reply_text("I couldn't find deals to compare right now. Try searching for a specific category or location!")
         return
 
-    comp_deals = results[:5]
+    comp_deals = [normalize_deal(d) for d in results[:5]]
     for d in comp_deals:
         profile_manager.add_recently_viewed(user_id, d)
 
@@ -452,11 +453,11 @@ async def compare_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
     reply = "📊 Deal Comparison\n\n"
     for i, deal in enumerate(comp_deals, 1):
         reply += (
-            f"{i}. 🏷️ Brand: {deal.get('brand', 'N/A')}\n"
-            f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+            f"{i}. 🏷️ Brand: {deal.get('brand')}\n"
+            f"📂 Category: {deal.get('display_category')}\n"
             f"📝 Offer: {deal.get('clean_title')}\n"
-            f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
-            f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+            f"💰 Price: {deal.get('formatted_price')}\n"
+            f"🎁 Discount: {deal.get('discount_percent')}%\n"
             f"📍 Location: {deal.get('display_location')}\n\n"
         )
 
@@ -495,7 +496,7 @@ async def personalized_recommendations_handler(update: Update, context: ContextT
         return
 
     USER_SEARCH_CACHE[user_id] = results
-    best_match = results[0]
+    best_match = normalize_deal(results[0])
 
     for d in results[:4]:
         profile_manager.add_recently_viewed(user_id, d)
@@ -509,11 +510,11 @@ async def personalized_recommendations_handler(update: Update, context: ContextT
 
     best_reply = (
         "🌟 Personalized Best Match\n\n"
-        f"🏷️ Brand: {best_match.get('brand', 'N/A')}\n"
-        f"📂 Category: {best_match.get('display_category', 'N/A')}\n"
+        f"🏷️ Brand: {best_match.get('brand')}\n"
+        f"📂 Category: {best_match.get('display_category')}\n"
         f"📝 Offer: {best_match.get('clean_title')}\n"
-        f"💰 Estimated Price: {best_match.get('formatted_price', 'Price not available')}\n"
-        f"🎁 Discount: {best_match.get('discount_percent', 0)}%\n"
+        f"💰 Estimated Price: {best_match.get('formatted_price')}\n"
+        f"🎁 Discount: {best_match.get('discount_percent')}%\n"
         f"📍 Location: {best_match.get('display_location')}\n\n"
         "📝 Reasoning:\n"
         f"{reasons_text}\n"
@@ -523,16 +524,16 @@ async def personalized_recommendations_handler(update: Update, context: ContextT
     best_keyboard = build_deal_keyboard(best_match)
     await update.message.reply_text(best_reply, reply_markup=best_keyboard, disable_web_page_preview=True)
 
-    other_matches = results[1:4]
+    other_matches = [normalize_deal(d) for d in results[1:4]]
     if other_matches:
         await update.message.reply_text("━━━━━━━━━━━━━━━━━━\n\n🎯 Other Personalized Recommendations:")
         for deal in other_matches:
             reply = (
-                f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
-                f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+                f"🏷️ Brand: {deal.get('brand')}\n"
+                f"📂 Category: {deal.get('display_category')}\n"
                 f"📝 Offer: {deal.get('clean_title')}\n"
-                f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
-                f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+                f"💰 Price: {deal.get('formatted_price')}\n"
+                f"🎁 Discount: {deal.get('discount_percent')}%\n"
                 f"📍 Location: {deal.get('display_location')}\n"
             )
             keyboard = build_deal_keyboard(deal)
@@ -591,13 +592,14 @@ async def recently_viewed_handler(update: Update, context: ContextTypes.DEFAULT_
         return
 
     await update.message.reply_text(f"📜 Recently Viewed Deals ({len(history)} items):\n")
-    for deal in history:
-        title = deal.get("clean_title", deal.get("title", ""))
+    for raw_deal in history:
+        deal = normalize_deal(raw_deal)
+        title = deal.get("clean_title")
         reply = (
-            f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
-            f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+            f"🏷️ Brand: {deal.get('brand')}\n"
+            f"📂 Category: {deal.get('display_category')}\n"
             f"📝 Offer: {title}\n"
-            f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
+            f"💰 Price: {deal.get('formatted_price')}\n"
             f"📍 Location: {deal.get('display_location')}\n"
         )
         keyboard = build_deal_keyboard(deal)
@@ -617,14 +619,15 @@ async def favourites_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await update.message.reply_text(f"❤️ Your Saved Favourites ({len(favs)} deals):\n")
 
-    for deal in favs:
-        title = deal.get("clean_title", deal.get("title", ""))
+    for raw_deal in favs:
+        deal = normalize_deal(raw_deal)
+        title = deal.get("clean_title")
         reply = (
-            f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
-            f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+            f"🏷️ Brand: {deal.get('brand')}\n"
+            f"📂 Category: {deal.get('display_category')}\n"
             f"📝 Offer: {title}\n"
-            f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
-            f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+            f"💰 Price: {deal.get('formatted_price')}\n"
+            f"🎁 Discount: {deal.get('discount_percent')}%\n"
             f"📍 Location: {deal.get('display_location')}\n"
         )
         keyboard = build_deal_keyboard(deal, is_favourite=True)
@@ -666,7 +669,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Detect intent from message
         raw_intent = detect_intent(message)
 
-        # Milestone 12.1 Customer Savings Agent Isolated Priority Router
+        # Milestone 12.3 Customer Savings Agent Shared Normalization Priority Router
         if raw_intent["type"] == "greeting":
             await start(update, context)
             return
@@ -749,16 +752,16 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             offset = 4
-            next_batch = cached_deals[offset : offset + 4]
+            next_batch = [normalize_deal(d) for d in cached_deals[offset : offset + 4]]
             for deal in next_batch:
                 profile_manager.add_recently_viewed(user_id, deal)
-                title = deal.get("clean_title", deal.get("title", ""))
+                title = deal.get("clean_title")
                 reply = (
-                    f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
-                    f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+                    f"🏷️ Brand: {deal.get('brand')}\n"
+                    f"📂 Category: {deal.get('display_category')}\n"
                     f"📝 Offer: {title}\n"
-                    f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
-                    f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+                    f"💰 Price: {deal.get('formatted_price')}\n"
+                    f"🎁 Discount: {deal.get('discount_percent')}%\n"
                     f"📍 Location: {deal.get('display_location')}\n"
                 )
                 keyboard = build_deal_keyboard(deal)
@@ -797,14 +800,15 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 USER_SEARCH_CACHE[user_id] = fallback_results
                 await update.message.reply_text("I couldn't find an exact match for your budget/location criteria.\n\nHere are the closest matching options:\n")
 
-                for deal in fallback_results[:4]:
+                for raw_deal in fallback_results[:4]:
+                    deal = normalize_deal(raw_deal)
                     profile_manager.add_recently_viewed(user_id, deal)
                     reply = (
-                        f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
-                        f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+                        f"🏷️ Brand: {deal.get('brand')}\n"
+                        f"📂 Category: {deal.get('display_category')}\n"
                         f"📝 Offer: {deal.get('clean_title')}\n"
-                        f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
-                        f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+                        f"💰 Price: {deal.get('formatted_price')}\n"
+                        f"🎁 Discount: {deal.get('discount_percent')}%\n"
                         f"📍 Location: {deal.get('display_location')}\n"
                     )
                     keyboard = build_deal_keyboard(deal)
@@ -825,8 +829,8 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         USER_SEARCH_CACHE[user_id] = results
 
-        best_match = results[0]
-        other_matches = results[1:4]
+        best_match = normalize_deal(results[0])
+        other_matches = [normalize_deal(d) for d in results[1:4]]
 
         for d in results[:4]:
             profile_manager.add_recently_viewed(user_id, d)
@@ -836,11 +840,11 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         best_reply = (
             "⭐ Best Match\n\n"
-            f"🏷️ Brand: {best_match.get('brand', 'N/A')}\n"
-            f"📂 Category: {best_match.get('display_category', 'N/A')}\n"
+            f"🏷️ Brand: {best_match.get('brand')}\n"
+            f"📂 Category: {best_match.get('display_category')}\n"
             f"📝 Offer: {best_match.get('clean_title')}\n"
-            f"💰 Estimated Price: {best_match.get('formatted_price', 'Price not available')}\n"
-            f"🎁 Discount: {best_match.get('discount_percent', 0)}%\n"
+            f"💰 Estimated Price: {best_match.get('formatted_price')}\n"
+            f"🎁 Discount: {best_match.get('discount_percent')}%\n"
             f"📍 Location: {best_match.get('display_location')}\n\n"
             "📝 Reasoning:\n"
             f"{reasons_text}\n\n"
@@ -855,11 +859,11 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             for deal in other_matches:
                 reply = (
-                    f"🏷️ Brand: {deal.get('brand', 'N/A')}\n"
-                    f"📂 Category: {deal.get('display_category', 'N/A')}\n"
+                    f"🏷️ Brand: {deal.get('brand')}\n"
+                    f"📂 Category: {deal.get('display_category')}\n"
                     f"📝 Offer: {deal.get('clean_title')}\n"
-                    f"💰 Price: {deal.get('formatted_price', 'Price not available')}\n"
-                    f"🎁 Discount: {deal.get('discount_percent', 0)}%\n"
+                    f"💰 Price: {deal.get('formatted_price')}\n"
+                    f"🎁 Discount: {deal.get('discount_percent')}%\n"
                     f"📍 Location: {deal.get('display_location')}\n"
                 )
                 keyboard = build_deal_keyboard(deal)
@@ -906,7 +910,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Complete Customer Savings Agent...")
+    print("[OK] Zookout AI Bot is running with Shared Deal Normalization Layer...")
     app.run_polling()
 
 

@@ -21,9 +21,15 @@ DEALS = load_deals()
 
 def clean_offer_title(deal: Dict[str, Any]) -> str:
     """
-    Intelligent Offer Title Extraction & OCR Cleanup Engine (Milestone 12.2):
+    Intelligent Offer Title Extraction & OCR Cleanup Engine (Milestone 12.3):
     Rejects OCR junk, trailing concatenated words, and replaces corrupted titles
-    with clean human-readable titles or category fallback labels (e.g. 'Restaurant Offer', 'Spa Offer').
+    with clean human-readable titles or generic category fallback labels:
+    - Restaurant Offer
+    - Spa Offer
+    - Salon Offer
+    - Entertainment Offer
+    - Cafe Offer
+    - Hotel Offer
     """
     title = (deal.get("title") or "").strip()
     brand = (deal.get("brand") or "").strip()
@@ -86,24 +92,26 @@ def clean_offer_title(deal: Dict[str, Any]) -> str:
         if len(cleaned_t) >= 6 and not cleaned_t.isdigit():
             return cleaned_t[:70]
 
-    # Fallback using Category & Brand (Milestone 12.2 OCR Fallback Labels)
+    # Fallback using Category (Milestone 12.3 Generic OCR Labels)
     cat_str = category.lower() if category and category != "Unknown" else "special experience"
     if "restaurant" in cat_str or "dining" in cat_str or "food" in cat_str:
-        return f"Restaurant Offer at {brand or 'Zookout Merchant'}"
+        return "Restaurant Offer"
     if "spa" in cat_str or "massage" in cat_str:
-        return f"Spa Offer at {brand or 'Zookout Merchant'}"
+        return "Spa Offer"
     if "salon" in cat_str or "beauty" in cat_str:
-        return f"Salon Offer at {brand or 'Zookout Merchant'}"
+        return "Salon Offer"
     if "cafe" in cat_str or "coffee" in cat_str:
-        return f"Cafe Offer at {brand or 'Zookout Merchant'}"
+        return "Cafe Offer"
     if "hotel" in cat_str or "resort" in cat_str:
-        return f"Hotel Offer at {brand or 'Zookout Merchant'}"
+        return "Hotel Offer"
+    if "entertainment" in cat_str or "adventure" in cat_str or "gaming" in cat_str or "water park" in cat_str:
+        return "Entertainment Offer"
 
-    return f"Special Offer at {brand or 'Zookout Merchant'}"
+    return "Special Offer"
 
 
 def display_category(req_category: Optional[str], deal: Dict[str, Any]) -> str:
-    """Category Normalization (Milestone 12.2): Ensures clean category string, avoiding 'N/A' or 'Unknown'."""
+    """Category Normalization (Milestone 12.3): Converts None/N/A/Unknown into clean category strings."""
     raw_cat = (deal.get("category") or "").strip()
     title = (deal.get("title") or "").lower()
     desc = (deal.get("description") or "").lower()
@@ -125,7 +133,7 @@ def display_category(req_category: Optional[str], deal: Dict[str, Any]) -> str:
         if req in ["salon", "beauty"]:
             return "Salon"
 
-    if raw_cat and raw_cat != "Unknown":
+    if raw_cat and raw_cat.lower() not in ["unknown", "none", "n/a", ""]:
         return raw_cat.title()
 
     if "cafe" in full_text or "coffee" in full_text:
@@ -141,7 +149,7 @@ def display_category(req_category: Optional[str], deal: Dict[str, Any]) -> str:
 
 
 def display_price(deal: Dict[str, Any]) -> str:
-    """Honest Price Display: Never shows ₹0 unless genuinely free."""
+    """Honest Price Display: Converts 0 or missing into 'Price unavailable' or 'FREE'."""
     try:
         price = float(str(deal.get("price", "0")).replace(",", ""))
     except Exception:
@@ -156,7 +164,63 @@ def display_price(deal: Dict[str, Any]) -> str:
     if "free" in title or "free" in desc or deal.get("discount_percent", 0) == 100:
         return "FREE"
 
-    return "Price not available"
+    return "Price unavailable"
+
+
+def normalize_deal(deal: Dict[str, Any], req_category: Optional[str] = None, req_location: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Shared Deal Normalization Layer (Milestone 12.3).
+    Constructs a single normalized deal object reused across Search, Recommendation Engine,
+    Experience Planner, Savings Agent, Comparison, and Personalization.
+    Exposes: Brand, Category, Offer, Price, Discount, Location, Source, Confidence.
+    """
+    raw_brand = (deal.get("brand") or "").strip()
+    brand = raw_brand if raw_brand and raw_brand.lower() not in ["none", "n/a", "unknown", "null"] else "Zookout Merchant"
+
+    norm_cat = display_category(req_category, deal)
+    clean_title = clean_offer_title(deal)
+    formatted_price = display_price(deal)
+
+    try:
+        price = float(str(deal.get("price", "0")).replace(",", ""))
+    except Exception:
+        price = 0.0
+
+    raw_loc = (deal.get("location") or "").strip()
+    if raw_loc and raw_loc.lower() not in ["none", "n/a", "", "null"]:
+        if "mumbai" in raw_loc.lower():
+            display_location = raw_loc.title()
+        else:
+            display_location = f"{raw_loc.title()}, Mumbai"
+    else:
+        display_location = "Mumbai"
+
+    disc = deal.get("discount_percent")
+    if disc is None or not isinstance(disc, (int, float)):
+        try:
+            disc = int(deal.get("discount_percent", 0))
+        except Exception:
+            disc = 0
+
+    is_complete = price > 0 and norm_cat != "Special Experience" and raw_loc.lower() not in ["none", "", "null"]
+    confidence = 0.95 if is_complete else 0.65
+
+    normalized = dict(deal)
+    normalized["brand"] = brand
+    normalized["category"] = norm_cat
+    normalized["display_category"] = norm_cat
+    normalized["offer"] = clean_title
+    normalized["clean_title"] = clean_title
+    normalized["price"] = price
+    normalized["formatted_price"] = formatted_price
+    normalized["discount"] = disc
+    normalized["discount_percent"] = disc
+    normalized["location"] = display_location
+    normalized["display_location"] = display_location
+    normalized["source"] = deal.get("source") or "Zookout Catalog"
+    normalized["confidence"] = confidence
+
+    return normalized
 
 
 def matches_category(req_category: str, deal: Dict) -> bool:
@@ -202,14 +266,15 @@ def matches_category(req_category: str, deal: Dict) -> bool:
 
 def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    Search Deals Engine (Milestone 12.2):
-    Ranks deals matching Category, Location, Budget, Preferences, and Query.
-    Guarantees no 'Category: N/A' or 'Location: None'.
+    Search Deals Engine (Milestone 12.3):
+    Ranks deals using the Shared Deal Normalization Layer.
+    Guarantees no 'Category: N/A', 'Location: None', or raw OCR titles.
     """
     deals = load_deals()
     if not deals:
         return []
 
+    intent = intent or {}
     req_category = intent.get("category")
     req_city = intent.get("city")
     req_location = intent.get("location")
@@ -283,23 +348,11 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         if disc > 0:
             score += (disc * 0.1)
 
-        cleaned_title = clean_offer_title(deal)
-        norm_category = display_category(req_category, deal)
-        formatted_price = display_price(deal)
-
-        display_location = location_raw
-        if location_raw.lower() not in ["mumbai", ""] and "mumbai" not in location_raw.lower():
-            display_location = f"{location_raw}, Mumbai"
-        elif not location_raw or location_raw.lower() == "none":
-            display_location = "Mumbai"
-
-        scored_deal = dict(deal)
-        scored_deal["clean_title"] = cleaned_title
-        scored_deal["display_category"] = norm_category
-        scored_deal["formatted_price"] = formatted_price
-        scored_deal["display_location"] = display_location
+        # Normalize deal via Shared Deal Normalization Layer
+        scored_deal = normalize_deal(deal, req_category, target_loc)
         scored_deal["score"] = round(score, 2)
+        scored_deal["reasons"] = reasons
         scored_results.append(scored_deal)
 
-    scored_results.sort(key=lambda x: x["score"], reverse=True)
+    scored_results.sort(key=lambda x: (x["confidence"], x["score"]), reverse=True)
     return scored_results
