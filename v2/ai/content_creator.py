@@ -1,6 +1,7 @@
+import re
 import logging
 from typing import Dict, List, Any
-from v2.search.search_engine import normalize_deal
+from v2.search.search_engine import normalize_deal, clean_location_string
 from v2.ai.merchant import merchant_agent
 
 logger = logging.getLogger(__name__)
@@ -8,12 +9,10 @@ logger = logging.getLogger(__name__)
 
 class ContentCreatorAgent:
     """
-    Milestone 14.2 - Production-Ready AI Content Creator Polish Engine:
-    - Dedicated Facebook & Instagram NLU Routing (Never triggers Experience Planner).
-    - Category-Aware Storytelling: Natural copy for Restaurant, Salon, Spa, Cafe, Hotel, Entertainment, Clinic, Fitness.
-    - Smart CTA Engine: 'Reserve your table today', 'Book your appointment', 'Reserve your spa session', 'Book your stay', 'Grab your tickets', 'Visit us today'.
-    - Embedded Real Hashtags: Appends 10-15 clean hashtags directly without generic notes.
-    - Zero Generic Buzzwords: Removes 'Fantastic experience', 'Top-tier service', 'Exclusive offer', 'Book today'.
+    Milestone 14.2 & Production Hashtag Generator Engine:
+    - Clean Location Parsing: Deduplicates location strings (e.g. 'Andheri, Mumbai').
+    - Clean Hashtag Engine: Generates #AreaCategory (e.g. #AndheriSpa) and #CityCategory (e.g. #MumbaiSpa).
+    - Removes commas, spaces, punctuation, and duplicate words.
     """
 
     def get_deal(self, user_id: int) -> Dict[str, Any]:
@@ -138,29 +137,60 @@ class ContentCreatorAgent:
         ]
 
     def generate_hashtags(self, deal: Dict[str, Any]) -> str:
-        """FEATURE 4: Embed Real Hashtags (Outputs 10-15 clean hashtags directly without generic notes)."""
-        brand = deal.get("brand", "Merchant").replace(" ", "").replace("&", "").replace("-", "")
-        cat = deal.get("display_category", "Deals").replace(" ", "")
-        loc = deal.get("display_location", "Mumbai").replace(" ", "")
+        """
+        Generates clean Instagram hashtags from cleaned location and category:
+        - Area + Category (e.g. #AndheriSpa)
+        - City + Category (e.g. #MumbaiSpa)
+        Removes commas, spaces, punctuation, and duplicate words/hashtags.
+        """
+        raw_loc = deal.get("display_location") or deal.get("location") or "Mumbai"
+        cleaned_loc = clean_location_string(raw_loc)
+        parts = [p.strip() for p in cleaned_loc.split(",") if p.strip()]
+
+        cat = deal.get("display_category") or deal.get("category") or "Deals"
+        clean_cat = re.sub(r"[^\w]", "", cat.split("&")[0].split("/")[0].strip()).title()
+
+        brand = deal.get("brand", "Merchant")
+        clean_brand = re.sub(r"[^\w]", "", brand).title()
 
         tags = []
+
+        # Generate Area + Category and City + Category hashtags
+        for part in parts:
+            clean_part = re.sub(r"[^\w]", "", part).title()
+            if clean_part and clean_cat:
+                tags.append(f"#{clean_part}{clean_cat}")
+            if clean_part:
+                tags.append(f"#{clean_part}Deals")
+
         c = cat.lower()
-
-        if "restaurant" in c or "dining" in c:
-            tags = [f"#{loc}Food", "#DinnerBuffet", "#WeekendDining", f"#{cat}Deals", "#Foodie", "#FamilyDinner", "#DateNight", f"#{brand}", f"#{loc}Restaurants", "#DiningOffers", "#BuffetLovers", "#ZookoutDeals"]
+        if "restaurant" in c or "dining" in c or "food" in c:
+            tags.extend(["#DinnerBuffet", "#WeekendDining", "#Foodie", "#FamilyDinner", "#DateNight"])
         elif "salon" in c or "beauty" in c:
-            tags = [f"#{loc}Salon", "#HairCare", "#BeautyLook", "#HairTransformation", "#SelfCare", f"#{brand}", f"#{loc}Beauty", "#SalonOffers", "#HairStyling", "#ZookoutBeauty"]
+            tags.extend(["#HairCare", "#BeautyLook", "#SelfCare", "#SalonOffers", "#HairStyling"])
         elif "spa" in c or "wellness" in c:
-            tags = [f"#{loc}Spa", "#Wellness", "#MassageTherapy", "#StressRelief", "#Relaxation", f"#{brand}", "#SelfCareDay", f"#{loc}Wellness", "#SpaDeals", "#ZookoutSpa"]
+            tags.extend(["#Wellness", "#MassageTherapy", "#StressRelief", "#Relaxation", "#SelfCareDay"])
         elif "hotel" in c or "stay" in c:
-            tags = [f"#{loc}Hotels", "#Staycation", "#WeekendGetaway", "#LuxuryStay", "#TravelGram", f"#{brand}", f"#{loc}Tourism", "#HotelDeals", "#ZookoutHotels"]
+            tags.extend(["#Staycation", "#WeekendGetaway", "#LuxuryStay", "#HotelDeals"])
         elif "cafe" in c or "coffee" in c:
-            tags = [f"#{loc}Cafes", "#CoffeeLovers", "#BrunchVibes", "#CafeMeetup", "#CoffeeTime", f"#{brand}", f"#{loc}Foodie", "#FreshBrew", "#ZookoutCafes"]
+            tags.extend(["#CoffeeLovers", "#BrunchVibes", "#CafeMeetup", "#CoffeeTime"])
         else:
-            tags = [f"#{loc}Deals", f"#{cat}", f"#{brand}", "#LocalOffers", f"#{loc}Life", "#BestDeals", "#WeekendVibes", "#SpecialOffer", "#Zookout"]
+            tags.extend(["#LocalOffers", "#BestDeals", "#WeekendVibes", "#SpecialOffer"])
 
-        unique_tags = list(dict.fromkeys(tags))[:14]
-        return " ".join(unique_tags)
+        if clean_brand:
+            tags.append(f"#{clean_brand}")
+        tags.append("#ZookoutDeals")
+
+        # Deduplicate hashtags case-insensitively
+        seen = set()
+        final_tags = []
+        for tag in tags:
+            tag_lower = tag.lower()
+            if tag_lower not in seen and len(tag) > 2:
+                seen.add(tag_lower)
+                final_tags.append(tag)
+
+        return " ".join(final_tags[:14])
 
     def generate_instagram_post(self, deal: Dict[str, Any]) -> str:
         """FEATURE 2: Instagram Post Generator (Category storytelling, natural CTAs, embedded real hashtags)."""
@@ -414,7 +444,7 @@ class ContentCreatorAgent:
         )
 
     def generate_marketing_help(self, deal: Dict[str, Any]) -> str:
-        """FEATURE 8: Category-Specific Marketing Help (Food photography, before/after reels, room tours)."""
+        """FEATURE 8: Category-Specific Marketing Help."""
         brand = deal.get("brand", "Zookout Merchant")
         cat = deal.get("display_category", "Experience")
         disc = deal.get("discount_percent", 0)

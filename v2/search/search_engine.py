@@ -24,6 +24,36 @@ def load_deals() -> List[Dict]:
 DEALS = load_deals()
 
 
+def clean_location_string(loc_str: str) -> str:
+    """
+    Cleans location strings by removing duplicate parts case-insensitively,
+    trimming extra spaces, and preserving correct order (Area, City).
+    Examples:
+    'Andheri, Andheri, Mumbai' -> 'Andheri, Mumbai'
+    'Bandra, Mumbai' -> 'Bandra, Mumbai'
+    'Mumbai' -> 'Mumbai'
+    'Powai, Powai, Mumbai' -> 'Powai, Mumbai'
+    """
+    if not loc_str or not isinstance(loc_str, str):
+        return "Mumbai"
+
+    parts = [p.strip() for p in loc_str.split(",") if p.strip()]
+    if not parts:
+        return "Mumbai"
+
+    seen = set()
+    cleaned_parts = []
+
+    for part in parts:
+        lower_part = part.lower()
+        if lower_part not in seen:
+            seen.add(lower_part)
+            formatted = part.title() if part.islower() or part.isupper() else part
+            cleaned_parts.append(formatted)
+
+    return ", ".join(cleaned_parts)
+
+
 def extract_deal_area(deal: Dict[str, Any]) -> Optional[str]:
     """
     Dynamically extracts sub-area (Andheri, Bandra, Juhu, Powai, etc.)
@@ -182,7 +212,7 @@ def normalize_deal(deal: Dict[str, Any], req_category: Optional[str] = None, req
     """
     Shared Deal Normalization Layer:
     Detects sub-area (e.g. Andheri, Bandra) dynamically to display 'Andheri, Mumbai'
-    when a sub-area is present, or 'Mumbai' when only city is stored.
+    and uses clean_location_string to eliminate duplicate location parts.
     """
     raw_brand = (deal.get("brand") or "").strip()
     brand = raw_brand if raw_brand and raw_brand.lower() not in ["none", "n/a", "unknown", "null"] else "Zookout Merchant"
@@ -200,17 +230,18 @@ def normalize_deal(deal: Dict[str, Any], req_category: Optional[str] = None, req
     area = extract_deal_area(deal)
 
     if not area and req_location and req_location.title() in SUB_AREAS:
-        # If user searched specific sub-area and deal matches, use matched sub-area
         area = req_location.title()
 
     if area and (not raw_loc or raw_loc.lower() == "mumbai"):
-        display_location = f"{area}, Mumbai"
+        raw_display = f"{area}, Mumbai"
     elif area:
-        display_location = f"{area}, {raw_loc.title()}"
+        raw_display = f"{area}, {raw_loc}"
     elif raw_loc and raw_loc.lower() not in ["none", "n/a", "", "null"]:
-        display_location = raw_loc.title()
+        raw_display = raw_loc
     else:
-        display_location = "Mumbai"
+        raw_display = "Mumbai"
+
+    display_location = clean_location_string(raw_display)
 
     disc = deal.get("discount_percent")
     if disc is None or not isinstance(disc, (int, float)):
@@ -303,7 +334,6 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     max_price = intent.get("max_price")
     user_query = (intent.get("query") or "").lower().strip()
 
-    # Determine location priority
     target_area = req_area or (req_location if req_location not in ["mumbai", ""] else None)
     target_city = req_city or (req_location if req_location == "mumbai" else None)
 
@@ -328,29 +358,23 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         location_str = location_raw.lower()
         cat_str = category_raw.lower()
 
-        # Category Filter
         if req_category and not matches_category(req_category, deal):
             continue
 
-        # Location Hierarchy Priority Matching:
-        # Priority 1: Exact Area Match (e.g. 'Andheri', 'Bandra')
         if target_area:
             if target_area != deal_area and target_area not in full_text:
                 continue
 
-        # Priority 2: City Match (e.g. 'Mumbai' matches all Mumbai deals)
         elif target_city:
             if target_city not in location_str and target_city not in full_text:
                 continue
 
-        # Budget Filter
         if max_price is not None and price > max_price and price > 0:
             continue
 
         score = 50.0
         reasons = []
 
-        # Category Match Score
         if req_category:
             if req_category.lower() in cat_str or req_category.lower() in title.lower():
                 score += 35
@@ -359,7 +383,6 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
                 score += 20
                 reasons.append(f"Relevant deal in {display_category(req_category, deal)}")
 
-        # Location Match Score
         if target_area:
             score += 35
             reasons.append(f"Located in your requested area ({target_area.title()})")
@@ -367,13 +390,11 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
             score += 15
             reasons.append(f"Located in {target_city.title()}")
 
-        # Budget Match Score
         if max_price is not None:
             if price > 0 and price <= max_price:
                 score += 25
                 reasons.append(f"Fits within budget of ₹{int(max_price)}")
 
-        # Query Word Matching
         stopwords = {"in", "the", "a", "an", "for", "under", "below", "deal", "deals", "offer", "offers", "near", "best", "cheap"}
         query_words = [w for w in re.findall(r"\w+", user_query) if w not in stopwords and len(w) > 2]
 
@@ -385,7 +406,6 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         if disc > 0:
             score += (disc * 0.2)
 
-        # Normalize deal via Shared Deal Normalization Layer
         scored_deal = normalize_deal(deal, req_category, target_area or target_city)
         scored_deal["score"] = round(score, 2)
         scored_deal["reasons"] = reasons
