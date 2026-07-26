@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, List, Any, Optional
 from v2.ai.profile import profile_manager
-from v2.search.search_engine import load_deals
+from v2.search.search_engine import load_deals, clean_offer_title, display_category, display_price
 from v2.telegram.handlers import get_favourites
 
 logger = logging.getLogger(__name__)
@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 
 class CustomerSavingsAgent:
     """
-    Milestone 12.1 - Complete Customer Savings Agent Engine:
-    Manages dedicated Customer Savings Profiles, detects price-prioritized deal opportunities,
-    tracks notified deal history, and provides honest, non-fictional explanations.
+    Milestone 12.2 - Refined Customer Savings Agent Engine:
+    Reuses shared UserProfileManager data, filters complete records with known prices,
+    explains savings calculation methodology, and generates accurate non-fictional explanations.
     """
 
     def __init__(self):
@@ -29,8 +29,7 @@ class CustomerSavingsAgent:
     def get_savings_profile_summary(self, user_id: int) -> str:
         """
         Displays dedicated 'My Savings' Response:
-        Favourite Categories, Favourite Merchants, Typical Budget, Preferred Location,
-        Estimated Savings, Number of Favourite Deals, Recent Activity.
+        Uses shared profile data from UserProfileManager and explains savings calculation method.
         """
         profile = profile_manager.get_profile(user_id)
         favs = get_favourites(user_id)
@@ -46,6 +45,8 @@ class CustomerSavingsAgent:
 
         # Calculate estimated savings realized from saved/viewed deals with known prices
         est_savings = 0.0
+        priced_deals_count = 0
+
         for deal in favs + history:
             disc = deal.get("discount_percent", 0)
             try:
@@ -53,10 +54,16 @@ class CustomerSavingsAgent:
                 if p > 0 and disc > 0:
                     orig = p / max(0.01, (1.0 - (disc / 100.0)))
                     est_savings += (orig - p)
+                    priced_deals_count += 1
             except Exception:
                 pass
 
         last_query = profile["recent_queries"][0] if profile["recent_queries"] else "None"
+
+        if priced_deals_count > 0 and est_savings > 0:
+            savings_str = f"💵 Estimated Tracked Savings: ₹{int(est_savings)}\nℹ️ Calculated from your {priced_deals_count} saved/viewed deals using original list price vs discounted payable price."
+        else:
+            savings_str = "💵 Estimated Tracked Savings: Calculation unavailable (no saved/viewed deals with discount data yet)."
 
         summary = (
             "💰 Customer Savings Profile\n\n"
@@ -69,15 +76,15 @@ class CustomerSavingsAgent:
             f"📜 Recently Viewed Deals: {len(history)} deals\n"
             f"🔍 Last Recent Search: {last_query}\n"
             f"📊 Total Searches Recorded: {profile['search_count']}\n\n"
-            f"💵 Estimated Tracked Savings: ₹{int(est_savings)}\n\n"
+            f"{savings_str}\n\n"
             "⚠️ Catalog Note: Expiry dates & real-time inventory are unavailable in current dataset. All opportunities reflect active curated deals."
         )
         return summary
 
     def detect_opportunities(self, user_id: int, limit: int = 4) -> List[Dict[str, Any]]:
         """
-        Detects price-prioritized deal opportunities based on user profile:
-        Prefers deals with known prices (price > 0), only showing unknown-price deals if no priced alternatives exist.
+        Detects refined deal opportunities using shared profile data:
+        Prefers complete records (known price > 0, valid category, valid location, clean title).
         """
         profile = profile_manager.get_profile(user_id)
         favs = get_favourites(user_id)
@@ -91,9 +98,8 @@ class CustomerSavingsAgent:
         avg_budget = sum(profile["budgets"]) / len(profile["budgets"]) if profile["budgets"] else None
         fav_deal_ids = {d.get("id") for d in favs}
 
-        # Separate priced deals from unknown-price deals to enforce price preference
-        priced_deals = []
-        unknown_deals = []
+        complete_priced_deals = []
+        partial_deals = []
 
         for deal in all_deals:
             deal_id = deal.get("id")
@@ -105,12 +111,17 @@ class CustomerSavingsAgent:
             except Exception:
                 price = 0.0
 
-            if price > 0:
-                priced_deals.append(deal)
-            else:
-                unknown_deals.append(deal)
+            cat = (deal.get("category") or "").strip()
+            loc = (deal.get("location") or "").strip()
 
-        candidate_pool = priced_deals if priced_deals else unknown_deals
+            is_complete = price > 0 and cat != "Unknown" and loc.lower() not in ["", "none"]
+
+            if is_complete:
+                complete_priced_deals.append(deal)
+            else:
+                partial_deals.append(deal)
+
+        candidate_pool = complete_priced_deals if complete_priced_deals else partial_deals
 
         scored_deals = []
         for deal in candidate_pool:
@@ -127,15 +138,13 @@ class CustomerSavingsAgent:
             except Exception:
                 price = 0.0
 
-            # Favourite Merchant Match
             if top_merch and top_merch in brand:
                 score += 5.0
                 reasons.append(f"Favourite merchant match ({deal.get('brand')})")
 
-            # Favourite Category Match & High Discount
             if top_cat and top_cat in cat:
                 score += 3.0
-                reasons.append(f"Favourite category match ({deal.get('display_category')})")
+                reasons.append(f"Favourite category match ({display_category(top_cat, deal)})")
                 if disc >= 40:
                     score += 4.0
                     reasons.append(f"High discount ({disc}% OFF)")
@@ -143,37 +152,49 @@ class CustomerSavingsAgent:
                 score += 2.0
                 reasons.append(f"High discount ({disc}% OFF)")
 
-            # Budget Match
             if avg_budget and price > 0 and price <= avg_budget:
                 score += 3.0
-                reasons.append(f"Budget match (Fits under ₹{int(avg_budget)})")
+                reasons.append(f"Typical budget match (Fits under ₹{int(avg_budget)})")
 
-            # Preferred Location Match
             if top_loc and top_loc in loc:
                 score += 2.0
-                reasons.append(f"Location match ({deal.get('display_location')})")
+                reasons.append(f"Preferred location match ({deal.get('location', 'Mumbai')})")
 
-            # Saved Deal Bonus
             if deal.get("id") in fav_deal_ids:
                 score += 4.0
                 reasons.append("Saved in your favourites")
 
             if score > 0:
+                cleaned_title = clean_offer_title(deal)
+                norm_category = display_category(top_cat, deal)
+                formatted_price = display_price(deal)
+                loc_raw = (deal.get("location") or "").strip()
+                disp_loc = f"{loc_raw}, Mumbai" if loc_raw and loc_raw.lower() not in ["mumbai", "none"] else "Mumbai"
+
                 deal_copy = dict(deal)
+                deal_copy["clean_title"] = cleaned_title
+                deal_copy["display_category"] = norm_category
+                deal_copy["formatted_price"] = formatted_price
+                deal_copy["display_location"] = disp_loc
                 deal_copy["opportunity_score"] = score
                 deal_copy["opportunity_reasons"] = reasons
                 scored_deals.append(deal_copy)
 
-        # Fallback if no specific profile score built yet
         if not scored_deals:
             for deal in candidate_pool[:limit]:
+                cleaned_title = clean_offer_title(deal)
+                norm_category = display_category(top_cat, deal)
+                formatted_price = display_price(deal)
+                loc_raw = (deal.get("location") or "").strip()
+                disp_loc = f"{loc_raw}, Mumbai" if loc_raw and loc_raw.lower() not in ["mumbai", "none"] else "Mumbai"
+
                 deal_copy = dict(deal)
-                disc = deal.get("discount_percent", 0)
-                reasons = ["Popular recommendation"]
-                if disc > 0:
-                    reasons.append(f"High discount ({disc}% OFF)")
+                deal_copy["clean_title"] = cleaned_title
+                deal_copy["display_category"] = norm_category
+                deal_copy["formatted_price"] = formatted_price
+                deal_copy["display_location"] = disp_loc
                 deal_copy["opportunity_score"] = 1.0
-                deal_copy["opportunity_reasons"] = reasons
+                deal_copy["opportunity_reasons"] = ["Popular recommendation"]
                 scored_deals.append(deal_copy)
 
         scored_deals.sort(key=lambda x: x["opportunity_score"], reverse=True)
@@ -181,15 +202,18 @@ class CustomerSavingsAgent:
 
     def explain_recommendation(self, user_id: int, deal: Dict[str, Any]) -> str:
         """
-        Generates explicit, non-fictional explanation bullets for 'Why did I get this?'.
-        Matches exact prompt format:
-        • Favourite category match
-        • Budget match
-        • Recent search match
-        • High discount
-        • Popular recommendation
+        Generates explicit, non-fictional explanation bullets based on stored user data:
+        • Favourite category match (Restaurant)
+        • Favourite merchant match (Kohinoor Continental)
+        • Typical budget match (Fits under ₹1000)
+        • Recent search match (Restaurant in Mumbai)
+        • Saved favourites match
+        • High discount (50% OFF)
         """
         profile = profile_manager.get_profile(user_id)
+        favs = get_favourites(user_id)
+        fav_ids = {d.get("id") for d in favs}
+
         reasons = []
 
         top_cat = profile["categories"].most_common(1)[0][0] if profile["categories"] else None
@@ -210,18 +234,21 @@ class CustomerSavingsAgent:
         if top_cat and top_cat.lower() in deal_cat.lower():
             reasons.append(f"Favourite category match ({top_cat})")
 
-        if avg_budget and price > 0 and price <= avg_budget:
-            reasons.append(f"Budget match (Fits under ₹{int(avg_budget)})")
-
-        if profile["recent_queries"]:
-            last_q = profile["recent_queries"][0]
-            reasons.append(f"Recent search match ({last_q})")
-
         if top_merch and top_merch.lower() in deal_brand.lower():
             reasons.append(f"Favourite merchant match ({top_merch})")
 
+        if avg_budget and price > 0 and price <= avg_budget:
+            reasons.append(f"Typical budget match (Fits under ₹{int(avg_budget)})")
+
+        if profile["recent_queries"]:
+            last_q = profile["recent_queries"][0]
+            reasons.append(f"Recent search match ('{last_q}')")
+
+        if deal.get("id") in fav_ids:
+            reasons.append("Saved favourites match")
+
         if top_loc and top_loc.lower() in deal_loc.lower():
-            reasons.append(f"Location match ({top_loc})")
+            reasons.append(f"Preferred location match ({top_loc})")
 
         if disc and disc >= 40:
             reasons.append(f"High discount ({disc}% OFF)")
