@@ -406,7 +406,12 @@ def detect_intent(message: str) -> Dict[str, Any]:
     intent["preferences"] = extracted_prefs
 
     budget_found = intent["max_price"] is not None or intent["min_price"] is not None
-    is_modifier = any(w in text for w in ["cheaper", "luxury", "premium", "budget", "only", "near", "instead", "deal", "deals", "offer", "offers", "higher discount"])
+    is_modifier = any(w in text for w in [
+        "cheaper", "cheapest", "luxury", "premium", "budget", "only", "near", "nearby",
+        "instead", "deal", "deals", "offer", "offers", "higher discount", "highest discount",
+        "highest", "best discount", "discount", "massage", "couples", "couple", "buffet",
+        "change location", "change budget"
+    ])
     has_date_time = intent["date"] is not None or intent["time_filter"] is not None or intent["meal_type"] is not None
 
     if intent["category"] or intent["location"] or budget_found or intent["occasion"] or intent["preferences"] or is_modifier or has_date_time:

@@ -1,7 +1,7 @@
 import re
 import logging
 from typing import Dict, List, Any
-from v2.search.search_engine import normalize_deal, clean_location_string
+from v2.search.search_engine import clean_location_string
 from v2.ai.merchant import merchant_agent
 
 logger = logging.getLogger(__name__)
@@ -9,10 +9,10 @@ logger = logging.getLogger(__name__)
 
 class ContentCreatorAgent:
     """
-    Milestone 14.2 & Production Hashtag Generator Engine:
-    - Clean Location Parsing: Deduplicates location strings (e.g. 'Andheri, Mumbai').
-    - Clean Hashtag Engine: Generates #AreaCategory (e.g. #AndheriSpa) and #CityCategory (e.g. #MumbaiSpa).
-    - Removes commas, spaces, punctuation, and duplicate words.
+    Milestone 14.2 & Production Content Creator Engine:
+    - Clean Location Parsing: Deduplicates location strings.
+    - Clean Price Formatting: Hides unknown/unavailable price fields cleanly.
+    - Clean Hashtag Engine: Generates #AreaCategory and #CityCategory without punctuation.
     """
 
     def get_deal(self, user_id: int) -> Dict[str, Any]:
@@ -40,10 +40,20 @@ class ContentCreatorAgent:
             return "Start your fitness journey"
         return "Reserve your offer"
 
+    def format_price_text(self, price: str, disc: int) -> str:
+        """Formats clean price text for storytelling copy without 'Price unavailable'."""
+        is_valid_price = price and price.strip() not in ["Price unavailable", "0", "₹0", "N/A", ""]
+        if is_valid_price:
+            return f"for just {price} (Save {disc}% OFF)!" if disc > 0 else f"for just {price}."
+        elif disc > 0:
+            return f"with Flat {disc}% OFF on the Entire Menu!"
+        else:
+            return "!"
+
     def get_category_storytelling(self, category: str, brand: str, title: str, price: str, disc: int) -> str:
         """Generates natural category-aware storytelling copy."""
         c = (category or "").lower()
-        price_text = f"for just {price} (Save {disc}% OFF)!" if disc > 0 else f"for just {price}."
+        price_text = self.format_price_text(price, disc)
 
         if any(k in c for k in ["restaurant", "dining", "buffet", "food"]):
             return (
@@ -88,7 +98,7 @@ class ContentCreatorAgent:
 
         return (
             f"Discover quality service at {brand}!\n\n"
-            f"Enjoy {title} {price_text} Verified parameters and transparent pricing guaranteed."
+            f"Enjoy {title} {price_text} Verified parameters and transparent service guaranteed."
         )
 
     def get_category_benefits(self, category: str) -> List[str]:
@@ -137,25 +147,17 @@ class ContentCreatorAgent:
         ]
 
     def generate_hashtags(self, deal: Dict[str, Any]) -> str:
-        """
-        Generates clean Instagram hashtags from cleaned location and category:
-        - Area + Category (e.g. #AndheriSpa)
-        - City + Category (e.g. #MumbaiSpa)
-        Removes commas, spaces, punctuation, and duplicate words/hashtags.
-        """
+        """Generates clean Instagram hashtags from cleaned location and category."""
         raw_loc = deal.get("display_location") or deal.get("location") or "Mumbai"
         cleaned_loc = clean_location_string(raw_loc)
         parts = [p.strip() for p in cleaned_loc.split(",") if p.strip()]
 
         cat = deal.get("display_category") or deal.get("category") or "Deals"
         clean_cat = re.sub(r"[^\w]", "", cat.split("&")[0].split("/")[0].strip()).title()
-
         brand = deal.get("brand", "Merchant")
         clean_brand = re.sub(r"[^\w]", "", brand).title()
 
         tags = []
-
-        # Generate Area + Category and City + Category hashtags
         for part in parts:
             clean_part = re.sub(r"[^\w]", "", part).title()
             if clean_part and clean_cat:
@@ -181,7 +183,6 @@ class ContentCreatorAgent:
             tags.append(f"#{clean_brand}")
         tags.append("#ZookoutDeals")
 
-        # Deduplicate hashtags case-insensitively
         seen = set()
         final_tags = []
         for tag in tags:
@@ -193,10 +194,10 @@ class ContentCreatorAgent:
         return " ".join(final_tags[:14])
 
     def generate_instagram_post(self, deal: Dict[str, Any]) -> str:
-        """FEATURE 2: Instagram Post Generator (Category storytelling, natural CTAs, embedded real hashtags)."""
+        """FEATURE 2: Instagram Post Generator (Clean price output, hides unavailable fields)."""
         brand = deal.get("brand", "Zookout Merchant")
         title = deal.get("clean_title", "Special Offer")
-        price = deal.get("formatted_price", "Price unavailable")
+        price = deal.get("formatted_price", "")
         disc = deal.get("discount_percent", 0)
         loc = deal.get("display_location", "Mumbai")
         cat = deal.get("display_category", "Experience")
@@ -215,10 +216,10 @@ class ContentCreatorAgent:
         )
 
     def generate_facebook_post(self, deal: Dict[str, Any]) -> str:
-        """FEATURE 1: Facebook Promotion Generator (Longer post, benefits, customer-focused)."""
+        """FEATURE 1: Facebook Promotion Generator."""
         brand = deal.get("brand", "Zookout Merchant")
         title = deal.get("clean_title", "Special Offer")
-        price = deal.get("formatted_price", "Price unavailable")
+        price = deal.get("formatted_price", "")
         disc = deal.get("discount_percent", 0)
         loc = deal.get("display_location", "Mumbai")
         cat = deal.get("display_category", "Experience")
@@ -226,12 +227,14 @@ class ContentCreatorAgent:
         cta = self.get_category_cta(cat)
         benefits = "\n".join(self.get_category_benefits(cat))
 
+        is_valid_price = price and price not in ["Price unavailable", "0", "₹0", ""]
+
         if disc > 0:
             headline = f"🔥 SAVE {disc}% OFF AT {brand.upper()}!"
-            price_detail = f"{price} (Flat {disc}% OFF)"
+            price_detail = f"{price} (Flat {disc}% OFF)" if is_valid_price else f"Flat {disc}% OFF"
         else:
             headline = f"🌟 FEATURED {cat.upper()} EXPERIENCE AT {brand.upper()}!"
-            price_detail = f"{price} (Affordable Quality)"
+            price_detail = price if is_valid_price else "Quality Guaranteed"
 
         return (
             "📘 Facebook Promotion\n\n"
@@ -247,25 +250,28 @@ class ContentCreatorAgent:
         )
 
     def generate_whatsapp_promo(self, deal: Dict[str, Any]) -> str:
-        """FEATURE 6: WhatsApp Promotion (Short, shareable, clear CTA)."""
+        """FEATURE 6: WhatsApp Promotion."""
         brand = deal.get("brand", "Zookout Merchant")
         title = deal.get("clean_title", "Special Offer")
-        price = deal.get("formatted_price", "Price unavailable")
+        price = deal.get("formatted_price", "")
         disc = deal.get("discount_percent", 0)
         cat = deal.get("display_category", "Experience")
 
         cta = self.get_category_cta(cat)
+        is_valid_price = price and price not in ["Price unavailable", "0", "₹0", ""]
 
         if disc > 0:
             offer_line = f"Save {disc}% OFF on {title}."
         else:
-            offer_line = f"Enjoy {title} for an affordable rate."
+            offer_line = f"Enjoy {title}."
+
+        price_line = f"💰 Price: {price}\n" if is_valid_price else ""
 
         return (
             "💬 WhatsApp Promotion\n\n"
             f"🔥 Special Deal at {brand}!\n\n"
             f"{offer_line}\n\n"
-            f"💰 Price: {price}\n"
+            f"{price_line}"
             f"📍 Location: {deal.get('display_location', 'Mumbai')}\n\n"
             f"📲 {cta} via Zookout!"
         )
@@ -274,19 +280,21 @@ class ContentCreatorAgent:
         """FEATURE 6: SMS Campaign (Strictly <= 160 Characters)."""
         brand = deal.get("brand", "Zookout Merchant")
         title = deal.get("clean_title", "Special Offer")
-        price = deal.get("formatted_price", "Price unavailable")
+        price = deal.get("formatted_price", "")
         disc = deal.get("discount_percent", 0)
         cat = deal.get("display_category", "Deal")
 
         cta = self.get_category_cta(cat)
+        is_valid_price = price and price not in ["Price unavailable", "0", "₹0", ""]
+        price_str = f" at {price}" if is_valid_price else ""
 
         if disc > 0:
-            sms_body = f"Special Offer at {brand}! {title} at {price} (Save {disc}%). {cta} on Zookout!"
+            sms_body = f"Special Offer at {brand}! {title}{price_str} (Save {disc}%). {cta} on Zookout!"
         else:
-            sms_body = f"Enjoy {title} at {brand} for just {price}. {cta} on Zookout!"
+            sms_body = f"Enjoy {title} at {brand}{price_str}. {cta} on Zookout!"
 
         if len(sms_body) > 160:
-            sms_body = f"{brand}: {title} at {price}. {cta} on Zookout!"[:160]
+            sms_body = f"{brand}: {title}{price_str}. {cta} on Zookout!"[:160]
 
         return (
             "📱 SMS Campaign (160 Characters Max)\n\n"
@@ -317,20 +325,22 @@ class ContentCreatorAgent:
         )
 
     def generate_promotional_captions(self, deal: Dict[str, Any]) -> str:
-        """FEATURE 6: Promotional Captions (Professional, Friendly, Luxury)."""
+        """FEATURE 6: Promotional Captions."""
         brand = deal.get("brand", "Zookout Merchant")
         title = deal.get("clean_title", "Special Offer")
-        price = deal.get("formatted_price", "Price unavailable")
+        price = deal.get("formatted_price", "")
         disc = deal.get("discount_percent", 0)
         cat = deal.get("display_category", "Experience")
 
         cta = self.get_category_cta(cat)
+        is_valid_price = price and price not in ["Price unavailable", "0", "₹0", ""]
 
         disc_str = f"with a {disc}% savings" if disc > 0 else "at an accessible price"
+        price_str = f" for {price}" if is_valid_price else ""
 
-        prof = f"Discover verified quality with {title} at {brand}. Available for {price} ({disc_str}). {cta} via Zookout."
-        friend = f"Hey there! Ready for a great time? Enjoy {title} at {brand} for just {price}! {cta} on Zookout 🎉"
-        lux = f"Indulge in a refined experience. {brand} presents {title} at {price}. Elevate your day with Zookout."
+        prof = f"Discover verified quality with {title} at {brand}{price_str} ({disc_str}). {cta} via Zookout."
+        friend = f"Hey there! Ready for a great time? Enjoy {title} at {brand}{price_str}! {cta} on Zookout 🎉"
+        lux = f"Indulge in a refined experience. {brand} presents {title}{price_str}. Elevate your day with Zookout."
 
         return (
             "✍️ Promotional Caption Styles\n\n"
@@ -340,19 +350,20 @@ class ContentCreatorAgent:
         )
 
     def generate_festival_promotions(self, deal: Dict[str, Any]) -> str:
-        """FEATURE 8: Festival Promotions (Diwali, New Year, Valentine's Day)."""
+        """FEATURE 8: Festival Promotions."""
         brand = deal.get("brand", "Zookout Merchant")
         title = deal.get("clean_title", "Special Offer")
-        price = deal.get("formatted_price", "Price unavailable")
+        price = deal.get("formatted_price", "")
         disc = deal.get("discount_percent", 0)
         cat = deal.get("display_category", "Experience")
 
         cta = self.get_category_cta(cat)
-        price_str = f"for {price} (Save {disc}% OFF)" if disc > 0 else f"for just {price}"
+        is_valid_price = price and price not in ["Price unavailable", "0", "₹0", ""]
+        price_str = f" for {price} (Save {disc}% OFF)" if (disc > 0 and is_valid_price) else (f" for {price}" if is_valid_price else "")
 
-        diwali = f"🪔 Diwali Celebration at {brand}! Light up your festive season with {title} {price_str}. {cta} on Zookout!"
-        ny = f"🎆 New Year Special! Celebrate the New Year with {title} at {brand} {price_str}. {cta} on Zookout!"
-        vday = f"❤️ Valentine's Day Special! Share memorable moments at {brand} with {title} {price_str}. {cta} on Zookout!"
+        diwali = f"🪔 Diwali Celebration at {brand}! Light up your festive season with {title}{price_str}. {cta} on Zookout!"
+        ny = f"🎆 New Year Special! Celebrate the New Year with {title} at {brand}{price_str}. {cta} on Zookout!"
+        vday = f"❤️ Valentine's Day Special! Share memorable moments at {brand} with {title}{price_str}. {cta} on Zookout!"
 
         return (
             "🎉 Festival Campaign Generator\n\n"
@@ -365,17 +376,18 @@ class ContentCreatorAgent:
         """FEATURE 9: Weekend Promotion."""
         brand = deal.get("brand", "Zookout Merchant")
         title = deal.get("clean_title", "Special Offer")
-        price = deal.get("formatted_price", "Price unavailable")
+        price = deal.get("formatted_price", "")
         disc = deal.get("discount_percent", 0)
         cat = deal.get("display_category", "Experience")
 
         cta = self.get_category_cta(cat)
-        price_str = f"for just {price} (Save {disc}% OFF)" if disc > 0 else f"for {price}"
+        is_valid_price = price and price not in ["Price unavailable", "0", "₹0", ""]
+        price_str = f" for just {price} (Save {disc}% OFF)" if (disc > 0 and is_valid_price) else (f" for {price}" if is_valid_price else "")
 
         return (
             "🥳 Weekend Promotion Generator\n\n"
             f"🌟 Make Your Weekend Memorable at {brand}!\n\n"
-            f"Unwind and enjoy {title} {price_str} this weekend.\n\n"
+            f"Unwind and enjoy {title}{price_str} this weekend.\n\n"
             f"Perfect for family outings, friends meetups, and relaxed afternoons in {deal.get('display_location', 'Mumbai')}.\n\n"
             f"📲 {cta} on Zookout before weekend slots fill up!"
         )
@@ -384,32 +396,34 @@ class ContentCreatorAgent:
         """FEATURE 10: Birthday Promotion."""
         brand = deal.get("brand", "Zookout Merchant")
         title = deal.get("clean_title", "Special Offer")
-        price = deal.get("formatted_price", "Price unavailable")
+        price = deal.get("formatted_price", "")
         disc = deal.get("discount_percent", 0)
         cat = deal.get("display_category", "Experience")
 
         cta = self.get_category_cta(cat)
-        price_str = f"at {price} ({disc}% OFF)" if disc > 0 else f"at {price}"
+        is_valid_price = price and price not in ["Price unavailable", "0", "₹0", ""]
+        price_str = f" at {price} ({disc}% OFF)" if (disc > 0 and is_valid_price) else (f" at {price}" if is_valid_price else "")
 
         return (
             "🎂 Birthday Promotion Generator\n\n"
             f"🎉 Celebrate Your Birthday at {brand}!\n\n"
-            f"Make your birthday extra special with {title} {price_str}.\n\n"
+            f"Make your birthday extra special with {title}{price_str}.\n\n"
             "Enjoy personalized service and quality treatment on your big day.\n\n"
             f"📲 {cta} on Zookout today!"
         )
 
     def generate_email_campaign(self, deal: Dict[str, Any]) -> str:
-        """FEATURE 8: Email Campaign (Subject, Preview, Greeting, Benefits, Details, CTA, Closing)."""
+        """FEATURE 8: Email Campaign."""
         brand = deal.get("brand", "Zookout Merchant")
         title = deal.get("clean_title", "Special Offer")
-        price = deal.get("formatted_price", "Price unavailable")
+        price = deal.get("formatted_price", "")
         disc = deal.get("discount_percent", 0)
         cat = deal.get("display_category", "Experience")
         loc = deal.get("display_location", "Mumbai")
 
         cta = self.get_category_cta(cat)
         benefits = "\n".join(self.get_category_benefits(cat))
+        is_valid_price = price and price not in ["Price unavailable", "0", "₹0", ""]
 
         if disc > 0:
             subject = f"Save {disc}% OFF on {title} at {brand}"
@@ -418,14 +432,16 @@ class ContentCreatorAgent:
             subject = f"Featured {cat} Package: {title} at {brand}"
             disc_line = ""
 
-        preview = f"Discover {title} for just {price} at {brand}. {cta} on Zookout."
+        price_line = f"• Price: {price}\n" if is_valid_price else ""
+        preview_price = f" for just {price}" if is_valid_price else ""
+        preview = f"Discover {title}{preview_price} at {brand}. {cta} on Zookout."
 
         body = (
             f"Dear Valued Guest,\n\n"
             f"We are delighted to introduce a featured {cat.lower()} package at {brand} in {loc}.\n\n"
             f"📌 Offer Details:\n"
             f"• Package: {title}\n"
-            f"• Price: {price}\n"
+            f"{price_line}"
             f"{disc_line}"
             f"• Location: {loc}\n\n"
             f"✨ Highlights & Customer Benefits:\n"

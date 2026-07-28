@@ -2,9 +2,10 @@ import time
 from typing import Dict, Any, Optional
 
 MODIFIER_KEYWORDS = [
-    "cheaper", "lower price", "higher discount", "best discount",
-    "luxury", "premium", "make it", "change to", "actually", "under", "below",
-    "budget", "only", "instead", "change location"
+    "cheaper", "cheapest", "lower price", "higher discount", "highest discount", "highest",
+    "best discount", "discount", "luxury", "premium", "make it", "change to", "actually",
+    "under", "below", "budget", "only", "instead", "change location", "change budget",
+    "massage", "couples", "couple", "buffet", "nearby", "near"
 ]
 
 
@@ -108,7 +109,7 @@ class ConversationMemoryManager:
             if "cheaper" in query_text or "lower price" in query_text:
                 old_max = merged.get("max_price")
                 merged["max_price"] = int(old_max * 0.7) if old_max and old_max > 300 else 500
-            elif "higher discount" in query_text or "best discount" in query_text:
+            elif "higher discount" in query_text or "best discount" in query_text or "highest discount" in query_text or "highest" in query_text:
                 merged["sort_by_discount"] = True
             elif "luxury" in query_text or "premium" in query_text:
                 merged["min_price"] = 1500

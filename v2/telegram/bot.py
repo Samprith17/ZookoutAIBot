@@ -997,13 +997,16 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"User ID: {user_id} | Message: {message} | Merged Intent: {intent}")
 
         results = search_deals(intent)
+        memory_manager.mark_completed(user_id)
+
+        if intent.get("fallback_notice"):
+            await update.message.reply_text(f"ℹ️ {intent['fallback_notice']}")
 
         if not results:
             no_deals_msg = generate_no_deals_response(intent)
             await update.message.reply_text(no_deals_msg)
             return
 
-        memory_manager.mark_completed(user_id)
         USER_SEARCH_CACHE[user_id] = results
 
         best_match = normalize_deal(results[0])
