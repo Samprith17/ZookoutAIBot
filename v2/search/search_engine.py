@@ -138,8 +138,8 @@ def get_nearby_locations(location: str) -> List[str]:
 
 def normalize_deal(deal: Dict[str, Any], category: Optional[str] = None, location: Optional[str] = None) -> Dict[str, Any]:
     """Normalizes deal fields with fallbacks and clean formatting."""
-    deal_area = extract_deal_area(deal) or location
-    if deal_area and deal_area.lower() not in ["mumbai", "bangalore", "bengaluru"]:
+    deal_area = extract_deal_area(deal)
+    if deal_area:
         raw_loc = f"{deal_area.title()}, Mumbai"
     else:
         raw_loc = deal.get("location") or "Mumbai"
@@ -217,7 +217,6 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     max_price = intent.get("max_price")
     min_price = intent.get("min_price")
     sort_by_discount = intent.get("sort_by_discount", False)
-    target_area = (intent.get("area") or intent.get("location") or "").strip().lower()
 
     try:
         price = float(str(deal.get("price", "0")).replace(",", ""))
@@ -293,7 +292,7 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     if disc > 0:
         reasons.append(f"{disc}% discount.")
 
-    normalized = normalize_deal(deal, req_category, target_area)
+    normalized = normalize_deal(deal, req_category)
     normalized["score"] = round(total_score, 2)
     normalized["reasons"] = reasons
     return normalized
@@ -359,7 +358,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
             candidate_deals = buffet_deals
             intent["fallback_notice"] = None
         else:
-            intent["fallback_notice"] = "No buffet offers are currently available. Showing the closest restaurant deals."
+            intent["fallback_notice"] = "No buffet deals found. Showing the closest restaurant deals."
 
     # 2. Location Filtering Pipeline: Exact Area -> Nearby Areas -> City -> Catalog
     matched_scored_deals = []
@@ -388,14 +387,14 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
                     nearby_deals.append(deal)
 
             if nearby_deals:
-                intent["fallback_notice"] = f"No restaurant deals were found in {target_area.title()}. Showing the closest available deals nearby."
+                intent["fallback_notice"] = f"No deals found in {target_area.title()}. Showing nearby locations."
                 for d in nearby_deals:
                     matched_scored_deals.append(compute_weighted_score(d, intent, "nearby"))
             else:
                 # Step 3: City Fallback
                 city_deals = candidate_deals
                 if city_deals:
-                    intent["fallback_notice"] = f"No restaurant deals were found in {target_area.title()}. Showing the closest available deals nearby."
+                    intent["fallback_notice"] = f"No deals found in {target_area.title()}. Showing nearby locations."
                     for d in city_deals:
                         matched_scored_deals.append(compute_weighted_score(d, intent, "city"))
 
