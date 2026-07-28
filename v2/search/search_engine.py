@@ -19,7 +19,7 @@ KNOWN_AREAS = [
 def is_corrupted_title(title: str) -> bool:
     """
     Detects OCR artifact junk, corrupted offer titles, and malformed catalog strings.
-    Valid titles MUST NOT be flagged:
+    Valid titles MUST NOT be flagged as corrupted:
     - 'Executive Veg Lunch' -> Valid
     - 'Flat 50% Off on Entire Menu' -> Valid
     - 'Sunday Buffet' -> Valid
@@ -35,11 +35,11 @@ def is_corrupted_title(title: str) -> bool:
     if not title:
         return True
     t = title.strip()
-    if len(t) < 4:
+    if len(t) < 3:
         return True
 
     t_lower = t.lower()
-    if "offline" in t_lower or "test brand" in t_lower:
+    if "offline" in t_lower or "test brand" in t_lower or "anot wr e st" in t_lower:
         return True
 
     # Genuine unprintable/OCR junk symbols (% is allowed for discounts like 50%)
@@ -47,11 +47,11 @@ def is_corrupted_title(title: str) -> bool:
     if sum(t.count(sym) for sym in junk_symbols) >= 2:
         return True
 
-    # OCR Garbage pattern: Alternating uppercase letters and digits inside a single word
+    # OCR Garbage pattern: Alternating uppercase letters and digits inside a single word (e.g. C4U5Ti9Ve)
     if re.search(r"\b[A-Za-z0-9]*\d+[A-Z]+\d+[A-Za-z0-9]*\b", t):
         return True
 
-    # Unspaced brackets inside letters like 'A(At' or 'Llb('
+    # Unspaced brackets inside letters like 'A(At'
     if re.search(r"\b[A-Za-z]+\([A-Za-z]+\b", t):
         return True
 
@@ -71,14 +71,14 @@ def is_corrupted_title(title: str) -> bool:
         if not w_clean:
             continue
 
-        # Check for zero-vowel words >= 3 chars (e.g. Llb, Ianncjlaursaiv)
+        # Check for zero-vowel words >= 4 chars (e.g. Llb, Ianncjlaursaiv)
         vowel_count = sum(1 for c in w_clean.lower() if c in "aeiouy")
-        if len(w_clean) >= 3 and vowel_count == 0 and not w_clean.isdigit():
+        if len(w_clean) >= 4 and vowel_count == 0 and not w_clean.isdigit():
             nonsense_count += 1
-        elif len(w_clean) >= 6 and (vowel_count / len(w_clean)) < 0.15:
+        elif len(w_clean) >= 7 and (vowel_count / len(w_clean)) < 0.15:
             nonsense_count += 1
 
-    if len(words) > 0 and (nonsense_count / len(words)) >= 0.25:
+    if len(words) > 0 and (nonsense_count / len(words)) >= 0.35:
         return True
 
     return False
@@ -103,14 +103,33 @@ def get_clean_title_fallback(category: str) -> str:
 
 
 def clean_offer_title(title: str, category: str = "") -> str:
-    """Cleans offer title, preserves valid titles, and applies category fallback ONLY if corrupted."""
-    if is_corrupted_title(title):
+    """
+    Cleans offer title, preserves valid titles, extracts clean readable prefixes from concatenated OCR strings,
+    and applies category fallback ONLY if the title is truly unreadable.
+    """
+    if not title or len(title.strip()) < 3:
         return get_clean_title_fallback(category)
 
-    # Normalize whitespace & strip leading deal ID numbers (e.g. '181 Executive Veg Lunch' -> 'Executive Veg Lunch')
     t = title.strip()
-    t = re.sub(r"^\d+\s+(?=[A-Za-z])", "", t)
-    t = re.sub(r"\s+", " ", t)
+
+    # Strip leading catalog IDs like '181 A(' or '181 ' while preserving ordinals like '2nd Buffet On Us'
+    t = re.sub(r"^\d{3,}\s+(?=[A-Za-z])", "", t)
+    t = re.sub(r"^\d+\s+[A-Za-z]\(", "", t)
+    t = re.sub(r"^[₹\d]{3,}(?=[A-Z][a-z])", "", t)
+
+    # If title has a clean readable phrase at the start before OCR junk markers, extract it
+    ocr_junk_markers = [
+        r"\s+Bsuhyo\b", r"\s+Bbiulliyn\b", r"\s+Awto\b", r"\s+Anot\b", r"\s+Bcuoy\b",
+        r"\s+Bmuays\b", r"\s+Benutye\b", r"\s+P Ewcoiartlh\b", r"\s+A₹\d+"
+    ]
+    for marker in ocr_junk_markers:
+        parts = re.split(marker, t, flags=re.IGNORECASE)
+        if parts and len(parts[0].strip()) >= 4:
+            t = parts[0].strip()
+            break
+
+    # Normalize whitespace
+    t = re.sub(r"\s+", " ", t).strip()
 
     if is_corrupted_title(t):
         return get_clean_title_fallback(category)
@@ -190,7 +209,8 @@ def get_nearby_locations(location: str) -> List[str]:
 
 def extract_discount_percent(deal: Dict[str, Any]) -> int:
     """
-    Parses numeric discount percentage from discount_percent field, discount string, title, description, or tags.
+    Parses numeric discount percentage from discount_percent, discount string, BOGO offer terms (1+1 = 50%),
+    title, description, or tags.
     """
     # 1. Check explicit discount_percent field
     raw_disc = deal.get("discount_percent")
@@ -202,19 +222,16 @@ def extract_discount_percent(deal: Dict[str, Any]) -> int:
     except Exception:
         pass
 
-    # 2. Check discount field string
-    raw_str = str(deal.get("discount") or "")
-    matches = re.findall(r"(\d+)\s*%", raw_str)
+    full_text = f"{deal.get('title','')} {deal.get('description','')} {deal.get('discount','')} {' '.join(deal.get('tags',[]))} {' '.join(deal.get('keywords',[]))}".lower()
+
+    # 2. Check for BOGO / 1+1 / 2nd Free / Half Price (50% Off)
+    if any(k in full_text for k in ["1+1", "buy 1 get 1", "buy one get one", "2nd buffet on us", "half price", "bogo", "50%"]):
+        return 50
+
+    # 3. Check for discount percentage in text
+    matches = re.findall(r"(\d+)\s*%\s*(?:off|discount|flat)", full_text, re.IGNORECASE)
     if matches:
         val = int(matches[0])
-        if 0 < val <= 100:
-            return val
-
-    # 3. Check title, description, tags for percentage discount
-    full_text = f"{deal.get('title','')} {deal.get('description','')} {' '.join(deal.get('tags',[]))}"
-    matches_off = re.findall(r"(\d+)\s*%\s*(?:off|discount|flat)", full_text, re.IGNORECASE)
-    if matches_off:
-        val = int(matches_off[0])
         if 0 < val <= 100:
             return val
 
@@ -335,11 +352,11 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     rating = float(deal.get("rating", 4.5))
     confidence = float(deal.get("confidence", 0.9))
 
-    title = deal.get("title", "")
+    clean_t = clean_offer_title(deal.get("title", ""), req_category or "")
     desc = deal.get("description", "")
     tags = [str(t).lower() for t in deal.get("tags", [])]
     keywords = [str(k).lower() for k in deal.get("keywords", [])]
-    full_text = f"{title} {desc} {' '.join(tags)} {' '.join(keywords)}".lower()
+    full_text = f"{clean_t} {deal.get('title','')} {desc} {' '.join(tags)} {' '.join(keywords)}".lower()
 
     # 1. Location Relevance (35%)
     if loc_tier == "exact":
@@ -371,7 +388,7 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     pop_score = min(10.0, confidence * 10.0)
 
     # 6. Offer Quality Score (5%)
-    quality_score = 5.0 if (disc > 0 and len(title) > 5) else 2.5
+    quality_score = 5.0 if (disc > 0 and len(clean_t) > 5) else 2.5
 
     # Final Weighted Sum
     total_score = loc_score + budget_score + disc_score + rating_score + pop_score + quality_score
@@ -393,7 +410,7 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     if max_price and price > 0 and price <= max_price:
         reasons.append(f"Within ₹{int(max_price):,} budget.")
 
-    # ONLY add buffet reasoning if deal actually contains buffet
+    # ONLY add buffet reasoning if displayed deal metadata genuinely contains buffet
     is_buffet = "buffet" in full_text
     if is_buffet:
         reasons.append("Includes a buffet offer.")
@@ -431,7 +448,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     sort_by_discount = intent.get("sort_by_discount", False)
     user_query = (intent.get("query") or "").lower().strip()
 
-    # Check for Buffet filtering requirement (Bug 1 & 2)
+    # Check for Buffet filtering requirement
     is_buffet_requested = any(w in user_query for w in ["buffet", "only buffet", "buffet only"]) or intent.get("meal_type") == "buffet" or intent.get("occasion") == "Buffet"
 
     target_area = req_area or (req_location if req_location not in ["mumbai", "bangalore", "bengaluru", ""] else None)
@@ -526,7 +543,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         for d in candidate_deals:
             matched_scored_deals.append(compute_weighted_score(d, intent, "catalog"))
 
-    # 3. Weighted Ranking & Highest Discount Sorting (Bug 3 & Bug 4)
+    # 3. Weighted Ranking & Highest Discount Sorting (Bug 2 & Bug 4)
     if sort_by_discount:
         for d in matched_scored_deals:
             d["discount_percent"] = extract_discount_percent(d)

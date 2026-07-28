@@ -100,19 +100,20 @@ def build_concierge_reasons(deal: dict, intent: dict) -> str:
     if disc and disc > 0:
         reasons.append(f"High savings offer with {disc}% OFF.")
 
+    # Factual Buffet Reasoning
+    title = deal.get("clean_title") or deal.get("title", "")
+    desc = deal.get("description", "")
+    tags = [str(t).lower() for t in deal.get("tags", [])]
+    keywords = [str(k).lower() for k in deal.get("keywords", [])]
+    deal_cat = deal.get("category", "")
+    full_deal_text = f"{title} {deal.get('title','')} {desc} {deal_cat} {' '.join(tags)} {' '.join(keywords)}".lower()
+
+    if "buffet" in full_deal_text:
+        reasons.append("Includes a buffet offer.")
+
     occ = intent.get("occasion")
-    if occ:
-        if occ.lower() == "buffet":
-            title = deal.get("title", "")
-            desc = deal.get("description", "")
-            tags = [str(t).lower() for t in deal.get("tags", [])]
-            keywords = [str(k).lower() for k in deal.get("keywords", [])]
-            deal_cat = deal.get("category", "")
-            full_deal_text = f"{title} {desc} {deal_cat} {' '.join(tags)} {' '.join(keywords)}".lower()
-            if "buffet" in full_deal_text:
-                reasons.append("Includes a buffet offer.")
-        else:
-            reasons.append(f"Suitable for {occ.title()} outing.")
+    if occ and occ.lower() != "buffet":
+        reasons.append(f"Suitable for {occ.title()} outing.")
 
     dt = intent.get("date") or intent.get("time_filter")
     if dt:
