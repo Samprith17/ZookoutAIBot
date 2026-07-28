@@ -1009,8 +1009,8 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         USER_SEARCH_CACHE[user_id] = results
 
-        best_match = normalize_deal(results[0])
-        other_matches = [normalize_deal(d) for d in results[1:4]]
+        best_match = results[0]
+        other_matches = results[1:4]
 
         for d in results[:4]:
             profile_manager.add_recently_viewed(user_id, d)
