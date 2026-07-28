@@ -8,6 +8,12 @@ logger = logging.getLogger(__name__)
 
 DATA_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "clean_deals.json"
 
+KNOWN_AREAS = [
+    "Andheri", "Bandra", "Juhu", "Powai", "Borivali", "Malad", "Lower Parel",
+    "Worli", "Dadar", "Thane", "Koramangala", "Indiranagar", "Whitefield",
+    "HSR Layout", "MG Road", "Dahisar", "Kandivali", "Goregaon", "Mulund", "Prabhadevi"
+]
+
 
 def is_corrupted_title(title: str) -> bool:
     """Detects OCR artifact junk / corrupted offer titles."""
@@ -102,11 +108,18 @@ def clean_location_string(location_raw: str) -> str:
 
 
 def extract_deal_area(deal: Dict[str, Any]) -> str:
-    """Extracts local area from deal location string."""
+    """Extracts local area from deal fields (location, title, description, keywords, tags)."""
     loc = deal.get("location") or ""
     parts = [p.strip() for p in loc.split(",") if p.strip()]
-    if parts:
+    if parts and parts[0].lower() not in ["mumbai", "bangalore", "bengaluru"]:
         return parts[0]
+
+    full_text = f"{deal.get('title','')} {deal.get('description','')} {' '.join(deal.get('tags',[]))} {' '.join(deal.get('keywords',[]))}".lower()
+
+    for area in KNOWN_AREAS:
+        if area.lower() in full_text:
+            return area
+
     return ""
 
 
@@ -125,9 +138,13 @@ def get_nearby_locations(location: str) -> List[str]:
 
 def normalize_deal(deal: Dict[str, Any], category: Optional[str] = None, location: Optional[str] = None) -> Dict[str, Any]:
     """Normalizes deal fields with fallbacks and clean formatting."""
-    raw_loc = deal.get("location") or location or "Mumbai"
-    cleaned_loc = clean_location_string(raw_loc)
+    deal_area = extract_deal_area(deal) or location
+    if deal_area and deal_area.lower() not in ["mumbai", "bangalore", "bengaluru"]:
+        raw_loc = f"{deal_area.title()}, Mumbai"
+    else:
+        raw_loc = deal.get("location") or "Mumbai"
 
+    cleaned_loc = clean_location_string(raw_loc)
     cat = deal.get("category") or category or "Experience"
 
     try:
@@ -137,14 +154,13 @@ def normalize_deal(deal: Dict[str, Any], category: Optional[str] = None, locatio
 
     disc = deal.get("discount_percent", 0) or 0
     formatted_price = f"₹{int(price):,}" if price > 0 else "Price unavailable"
-
     savings = int(price * (disc / 100.0)) if price > 0 and disc > 0 else 0
 
     return {
         "id": str(deal.get("id", "UNKNOWN")),
         "brand": deal.get("brand", "Merchant"),
         "title": deal.get("title", "Special Offer"),
-        "clean_title": deal.get("clean_title") or deal.get("title") or "Special Offer",
+        "clean_title": clean_offer_title(deal.get("clean_title") or deal.get("title") or "Special Offer", cat),
         "category": cat,
         "display_category": cat.title(),
         "location": cleaned_loc,
@@ -215,7 +231,8 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     title = deal.get("title", "")
     desc = deal.get("description", "")
     tags = [str(t).lower() for t in deal.get("tags", [])]
-    full_text = f"{title} {desc} {' '.join(tags)}".lower()
+    keywords = [str(k).lower() for k in deal.get("keywords", [])]
+    full_text = f"{title} {desc} {' '.join(tags)} {' '.join(keywords)}".lower()
 
     # 1. Location Relevance (35%)
     if loc_tier == "exact":
@@ -305,7 +322,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     sort_by_discount = intent.get("sort_by_discount", False)
     user_query = (intent.get("query") or "").lower().strip()
 
-    # Check for Buffet filtering requirement (Issue 2)
+    # Check for Buffet filtering requirement (Bug 2)
     is_buffet_requested = any(w in user_query for w in ["buffet", "only buffet", "buffet only"]) or intent.get("meal_type") == "buffet"
 
     target_area = req_area or (req_location if req_location not in ["mumbai", "bangalore", "bengaluru", ""] else None)
@@ -330,11 +347,11 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         candidate_deals.append(deal)
 
-    # If Buffet requested: Filter candidates first for buffet
+    # If Buffet requested: Filter candidates first for buffet across title, desc, tags, keywords
     if is_buffet_requested:
         buffet_deals = []
         for deal in candidate_deals:
-            full_txt = f"{deal.get('title','')} {deal.get('description','')} {deal.get('category','')} {' '.join(deal.get('tags',[]))}".lower()
+            full_txt = f"{deal.get('title','')} {deal.get('description','')} {deal.get('category','')} {' '.join(deal.get('tags',[]))} {' '.join(deal.get('keywords',[]))}".lower()
             if "buffet" in full_txt:
                 buffet_deals.append(deal)
 
@@ -342,23 +359,22 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
             candidate_deals = buffet_deals
             intent["fallback_notice"] = None
         else:
-            intent["fallback_notice"] = "No buffet deals are currently available. Here are the closest restaurant deals instead."
+            intent["fallback_notice"] = "No buffet offers are currently available. Showing the closest restaurant deals."
 
     # 2. Location Filtering Pipeline: Exact Area -> Nearby Areas -> City -> Catalog
     matched_scored_deals = []
 
     if target_area:
-        # Step 1: Exact Area Match
+        # Step 1: Exact Area Match across location, title, desc, tags, keywords
         exact_deals = []
         for deal in candidate_deals:
             deal_area = (extract_deal_area(deal) or "").lower()
-            full_txt = f"{deal.get('location','')} {deal.get('title','')} {deal.get('description','')}".lower()
+            full_txt = f"{deal.get('location','')} {deal.get('title','')} {deal.get('description','')} {' '.join(deal.get('tags',[]))} {' '.join(deal.get('keywords',[]))}".lower()
             if target_area == deal_area or target_area in full_txt:
                 exact_deals.append(deal)
 
         if exact_deals:
-            if not intent.get("fallback_notice"):
-                intent["fallback_notice"] = None
+            intent["fallback_notice"] = None
             for d in exact_deals:
                 matched_scored_deals.append(compute_weighted_score(d, intent, "exact"))
         else:
@@ -367,21 +383,19 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
             nearby_deals = []
             for deal in candidate_deals:
                 deal_area = (extract_deal_area(deal) or "").lower()
-                full_txt = f"{deal.get('location','')} {deal.get('title','')}".lower()
+                full_txt = f"{deal.get('location','')} {deal.get('title','')} {deal.get('description','')} {' '.join(deal.get('tags',[]))} {' '.join(deal.get('keywords',[]))}".lower()
                 if any(nb.lower() in deal_area or nb.lower() in full_txt for nb in nearby_list):
                     nearby_deals.append(deal)
 
             if nearby_deals:
-                if not intent.get("fallback_notice"):
-                    intent["fallback_notice"] = f"No exact {req_category or 'deal'}s were found in {target_area.title()}. Showing the closest available deals nearby."
+                intent["fallback_notice"] = f"No restaurant deals were found in {target_area.title()}. Showing the closest available deals nearby."
                 for d in nearby_deals:
                     matched_scored_deals.append(compute_weighted_score(d, intent, "nearby"))
             else:
                 # Step 3: City Fallback
                 city_deals = candidate_deals
                 if city_deals:
-                    if not intent.get("fallback_notice"):
-                        intent["fallback_notice"] = f"No exact deals were found in {target_area.title()}. Showing top deals across the city."
+                    intent["fallback_notice"] = f"No restaurant deals were found in {target_area.title()}. Showing the closest available deals nearby."
                     for d in city_deals:
                         matched_scored_deals.append(compute_weighted_score(d, intent, "city"))
 
