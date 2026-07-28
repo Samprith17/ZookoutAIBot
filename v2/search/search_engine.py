@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 from v2.constants import NEARBY_AREAS_MAP
@@ -16,26 +17,57 @@ KNOWN_AREAS = [
 
 
 def is_corrupted_title(title: str) -> bool:
-    """Detects OCR artifact junk / corrupted offer titles."""
+    """
+    Detects OCR artifact junk, corrupted offer titles, and malformed catalog strings.
+    Examples detected:
+    - 'Ow E Xe ₹C4U5Ti9Ve Veg Lunch'
+    - '₹4E5X9Ecutive Veg Lunch'
+    - 'Restaurant Offline At Restaurant'
+    - '181 A(At Llb Ianncjlaursaiv'
+    """
     if not title:
         return True
     t = title.strip()
-    if len(t) < 3:
+    if len(t) < 4:
         return True
 
-    junk_symbols = ["%", "@", "#", "*", "^", "~", "`", "$", "|", "§", "©", "®"]
-    if sum(t.count(sym) for sym in junk_symbols) >= 2:
+    # Check for OCR junk symbols
+    junk_symbols = ["%", "@", "#", "*", "^", "~", "`", "$", "|", "§", "©", "®", "(", ")", "[", "]", "{", "}", "\\"]
+    if sum(t.count(sym) for sym in junk_symbols) >= 1:
+        return True
+
+    # Check for repeating words or offline status junk
+    t_lower = t.lower()
+    if "offline" in t_lower or "test brand" in t_lower:
         return True
 
     words = t.split()
+    if not words:
+        return True
+
+    mixed_alphanumeric_count = 0
     nonsense_count = 0
+
     for w in words:
-        if len(w) > 4 and not any(v in w.lower() for v in ["a", "e", "i", "o", "u", "y"]):
+        w_clean = re.sub(r"[^\w]", "", w)
+        if not w_clean:
+            continue
+        has_digit = any(c.isdigit() for c in w_clean)
+        has_alpha = any(c.isalpha() for c in w_clean)
+        if has_digit and has_alpha and len(w_clean) >= 3:
+            mixed_alphanumeric_count += 1
+
+        # Check for zero-vowel words (e.g. Llb) or low-vowel gibberish
+        vowel_count = sum(1 for c in w_clean.lower() if c in "aeiouy")
+        if len(w_clean) >= 3 and vowel_count == 0:
             nonsense_count += 1
-        if sum(1 for c in w if c.isdigit()) > 0 and sum(1 for c in w if c.isalpha()) > 0 and len(w) > 3:
+        elif len(w_clean) >= 6 and (vowel_count / len(w_clean)) < 0.20:
             nonsense_count += 1
 
-    if len(words) > 0 and (nonsense_count / len(words)) >= 0.4:
+    if mixed_alphanumeric_count >= 1:
+        return True
+
+    if len(words) > 0 and (nonsense_count / len(words)) >= 0.20:
         return True
 
     return False
@@ -60,10 +92,19 @@ def get_clean_title_fallback(category: str) -> str:
 
 
 def clean_offer_title(title: str, category: str = "") -> str:
-    """Cleans offer title and applies category fallback if corrupted."""
+    """Cleans offer title, removes OCR noise, and applies category fallback if corrupted."""
     if is_corrupted_title(title):
         return get_clean_title_fallback(category)
-    return title.strip()
+
+    # Normalize whitespace & strip leading deal ID numbers
+    t = title.strip()
+    t = re.sub(r"^\d+\s+", "", t)  # Strip leading numbers like '181 '
+    t = re.sub(r"\s+", " ", t)
+
+    if is_corrupted_title(t):
+        return get_clean_title_fallback(category)
+
+    return t
 
 
 def display_category(category: str) -> str:
@@ -137,7 +178,7 @@ def get_nearby_locations(location: str) -> List[str]:
 
 
 def normalize_deal(deal: Dict[str, Any], category: Optional[str] = None, location: Optional[str] = None) -> Dict[str, Any]:
-    """Normalizes deal fields with fallbacks and clean formatting."""
+    """Normalizes and validates deal fields with fallbacks and clean formatting."""
     deal_area = extract_deal_area(deal)
     if deal_area:
         raw_loc = f"{deal_area.title()}, Mumbai"
@@ -147,20 +188,47 @@ def normalize_deal(deal: Dict[str, Any], category: Optional[str] = None, locatio
     cleaned_loc = clean_location_string(raw_loc)
     cat = deal.get("category") or category or "Experience"
 
+    # Validate Price
+    raw_price = deal.get("price")
     try:
-        price = float(str(deal.get("price", "0")).replace(",", ""))
+        if raw_price is None or str(raw_price).strip() in ["", "None", "null", "N/A", "Price unavailable"]:
+            price = 0.0
+        else:
+            price = float(str(raw_price).replace(",", "").replace("₹", "").strip())
+            if price < 0:
+                price = 0.0
     except Exception:
         price = 0.0
 
-    disc = deal.get("discount_percent", 0) or 0
+    # Validate Discount Percent
+    raw_disc = deal.get("discount_percent")
+    try:
+        if raw_disc is None or str(raw_disc).strip() in ["", "None", "null", "N/A"]:
+            disc = 0
+        else:
+            disc = int(float(str(raw_disc).replace("%", "").strip()))
+            if disc < 0 or disc > 100:
+                disc = 0
+    except Exception:
+        disc = 0
+
     formatted_price = f"₹{int(price):,}" if price > 0 else "Price unavailable"
     savings = int(price * (disc / 100.0)) if price > 0 and disc > 0 else 0
 
+    # Validate Clean Title
+    raw_title = deal.get("clean_title") or deal.get("title") or ""
+    clean_title = clean_offer_title(raw_title, cat)
+
+    # Validate Brand Name
+    brand = (deal.get("brand") or "").strip()
+    if not brand or is_corrupted_title(brand):
+        brand = "Zookout Merchant"
+
     return {
         "id": str(deal.get("id", "UNKNOWN")),
-        "brand": deal.get("brand", "Merchant"),
+        "brand": brand,
         "title": deal.get("title", "Special Offer"),
-        "clean_title": clean_offer_title(deal.get("clean_title") or deal.get("title") or "Special Offer", cat),
+        "clean_title": clean_title,
         "category": cat,
         "display_category": cat.title(),
         "location": cleaned_loc,
@@ -285,9 +353,10 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     if max_price and price > 0 and price <= max_price:
         reasons.append(f"Within ₹{int(max_price):,} budget.")
 
+    # ONLY add buffet reasoning if deal actually contains buffet
     is_buffet = "buffet" in full_text
     if is_buffet:
-        reasons.append("Includes buffet offer.")
+        reasons.append("Includes a buffet offer.")
 
     if disc > 0:
         reasons.append(f"{disc}% discount.")
@@ -321,7 +390,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     sort_by_discount = intent.get("sort_by_discount", False)
     user_query = (intent.get("query") or "").lower().strip()
 
-    # Check for Buffet filtering requirement (Bug 2)
+    # Check for Buffet filtering requirement (Bug 1 & 2)
     is_buffet_requested = any(w in user_query for w in ["buffet", "only buffet", "buffet only"]) or intent.get("meal_type") == "buffet"
 
     target_area = req_area or (req_location if req_location not in ["mumbai", "bangalore", "bengaluru", ""] else None)
@@ -416,11 +485,29 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         for d in candidate_deals:
             matched_scored_deals.append(compute_weighted_score(d, intent, "catalog"))
 
-    # 3. Weighted Ranking Sort
-    matched_scored_deals.sort(
-        key=lambda x: (x["discount_percent"] if sort_by_discount else x["score"], x["confidence"]),
-        reverse=True
-    )
+    # 3. Weighted Ranking & Highest Discount Sorting (Bug 3)
+    if sort_by_discount:
+        # Validate discount values and sort strictly by numeric discount_percent descending
+        for d in matched_scored_deals:
+            try:
+                disc_val = int(float(str(d.get("discount_percent", 0)).replace("%", "").strip()))
+                d["discount_percent"] = max(0, min(100, disc_val))
+            except Exception:
+                d["discount_percent"] = 0
+
+        matched_scored_deals.sort(
+            key=lambda x: (x.get("discount_percent", 0), x.get("score", 0)),
+            reverse=True
+        )
+
+        max_disc = max((x.get("discount_percent", 0) for x in matched_scored_deals), default=0)
+        if max_disc == 0:
+            intent["fallback_notice"] = "No higher-discount deals are available for your current filters."
+    else:
+        matched_scored_deals.sort(
+            key=lambda x: (x["score"], x["confidence"]),
+            reverse=True
+        )
 
     return matched_scored_deals
 
