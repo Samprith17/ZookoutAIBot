@@ -19,11 +19,18 @@ KNOWN_AREAS = [
 def is_corrupted_title(title: str) -> bool:
     """
     Detects OCR artifact junk, corrupted offer titles, and malformed catalog strings.
-    Examples detected:
-    - 'Ow E Xe ₹C4U5Ti9Ve Veg Lunch'
-    - '₹4E5X9Ecutive Veg Lunch'
-    - 'Restaurant Offline At Restaurant'
-    - '181 A(At Llb Ianncjlaursaiv'
+    Valid titles MUST NOT be flagged:
+    - 'Executive Veg Lunch' -> Valid
+    - 'Flat 50% Off on Entire Menu' -> Valid
+    - 'Sunday Buffet' -> Valid
+    - '2nd Buffet On Us' -> Valid
+    - 'Unlimited Mocktails' -> Valid
+
+    Corrupted titles MUST be flagged:
+    - 'Ow E Xe ₹C4U5Ti9Ve Veg Lunch' -> Corrupted
+    - '₹4E5X9Ecutive' -> Corrupted
+    - '181 A(At Llb Ianncjlaursaiv' -> Corrupted
+    - 'Restaurant Offline At Restaurant' -> Corrupted
     """
     if not title:
         return True
@@ -31,43 +38,47 @@ def is_corrupted_title(title: str) -> bool:
     if len(t) < 4:
         return True
 
-    # Check for OCR junk symbols
-    junk_symbols = ["%", "@", "#", "*", "^", "~", "`", "$", "|", "§", "©", "®", "(", ")", "[", "]", "{", "}", "\\"]
-    if sum(t.count(sym) for sym in junk_symbols) >= 1:
-        return True
-
-    # Check for repeating words or offline status junk
     t_lower = t.lower()
     if "offline" in t_lower or "test brand" in t_lower:
+        return True
+
+    # Genuine unprintable/OCR junk symbols (% is allowed for discounts like 50%)
+    junk_symbols = ["@", "#", "*", "^", "~", "`", "$", "|", "§", "©", "®", "¥", "¤"]
+    if sum(t.count(sym) for sym in junk_symbols) >= 2:
+        return True
+
+    # OCR Garbage pattern: Alternating uppercase letters and digits inside a single word
+    if re.search(r"\b[A-Za-z0-9]*\d+[A-Z]+\d+[A-Za-z0-9]*\b", t):
+        return True
+
+    # Unspaced brackets inside letters like 'A(At' or 'Llb('
+    if re.search(r"\b[A-Za-z]+\([A-Za-z]+\b", t):
         return True
 
     words = t.split()
     if not words:
         return True
 
-    mixed_alphanumeric_count = 0
     nonsense_count = 0
+    ordinals = {"1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"}
 
     for w in words:
+        w_lower = w.lower()
+        if w_lower in ordinals:
+            continue
+
         w_clean = re.sub(r"[^\w]", "", w)
         if not w_clean:
             continue
-        has_digit = any(c.isdigit() for c in w_clean)
-        has_alpha = any(c.isalpha() for c in w_clean)
-        if has_digit and has_alpha and len(w_clean) >= 3:
-            mixed_alphanumeric_count += 1
 
-        # Check for zero-vowel words (e.g. Llb) or low-vowel gibberish
+        # Check for zero-vowel words >= 3 chars (e.g. Llb, Ianncjlaursaiv)
         vowel_count = sum(1 for c in w_clean.lower() if c in "aeiouy")
-        if len(w_clean) >= 3 and vowel_count == 0:
+        if len(w_clean) >= 3 and vowel_count == 0 and not w_clean.isdigit():
             nonsense_count += 1
-        elif len(w_clean) >= 6 and (vowel_count / len(w_clean)) < 0.20:
+        elif len(w_clean) >= 6 and (vowel_count / len(w_clean)) < 0.15:
             nonsense_count += 1
 
-    if mixed_alphanumeric_count >= 1:
-        return True
-
-    if len(words) > 0 and (nonsense_count / len(words)) >= 0.20:
+    if len(words) > 0 and (nonsense_count / len(words)) >= 0.25:
         return True
 
     return False
@@ -92,13 +103,13 @@ def get_clean_title_fallback(category: str) -> str:
 
 
 def clean_offer_title(title: str, category: str = "") -> str:
-    """Cleans offer title, removes OCR noise, and applies category fallback if corrupted."""
+    """Cleans offer title, preserves valid titles, and applies category fallback ONLY if corrupted."""
     if is_corrupted_title(title):
         return get_clean_title_fallback(category)
 
-    # Normalize whitespace & strip leading deal ID numbers
+    # Normalize whitespace & strip leading deal ID numbers (e.g. '181 Executive Veg Lunch' -> 'Executive Veg Lunch')
     t = title.strip()
-    t = re.sub(r"^\d+\s+", "", t)  # Strip leading numbers like '181 '
+    t = re.sub(r"^\d+\s+(?=[A-Za-z])", "", t)
     t = re.sub(r"\s+", " ", t)
 
     if is_corrupted_title(t):
@@ -177,6 +188,45 @@ def get_nearby_locations(location: str) -> List[str]:
     return ["Andheri", "Bandra", "Juhu"]
 
 
+def extract_discount_percent(deal: Dict[str, Any]) -> int:
+    """
+    Parses numeric discount percentage from discount_percent field, discount string, title, description, or tags.
+    """
+    # 1. Check explicit discount_percent field
+    raw_disc = deal.get("discount_percent")
+    try:
+        if raw_disc is not None and str(raw_disc).strip() not in ["", "None", "null", "N/A"]:
+            val = int(float(str(raw_disc).replace("%", "").strip()))
+            if 0 < val <= 100:
+                return val
+    except Exception:
+        pass
+
+    # 2. Check discount field string
+    raw_str = str(deal.get("discount") or "")
+    matches = re.findall(r"(\d+)\s*%", raw_str)
+    if matches:
+        val = int(matches[0])
+        if 0 < val <= 100:
+            return val
+
+    # 3. Check title, description, tags for percentage discount
+    full_text = f"{deal.get('title','')} {deal.get('description','')} {' '.join(deal.get('tags',[]))}"
+    matches_off = re.findall(r"(\d+)\s*%\s*(?:off|discount|flat)", full_text, re.IGNORECASE)
+    if matches_off:
+        val = int(matches_off[0])
+        if 0 < val <= 100:
+            return val
+
+    matches_any = re.findall(r"(\d+)\s*%", full_text)
+    if matches_any:
+        val = int(matches_any[0])
+        if 0 < val <= 100:
+            return val
+
+    return 0
+
+
 def normalize_deal(deal: Dict[str, Any], category: Optional[str] = None, location: Optional[str] = None) -> Dict[str, Any]:
     """Normalizes and validates deal fields with fallbacks and clean formatting."""
     deal_area = extract_deal_area(deal)
@@ -200,17 +250,8 @@ def normalize_deal(deal: Dict[str, Any], category: Optional[str] = None, locatio
     except Exception:
         price = 0.0
 
-    # Validate Discount Percent
-    raw_disc = deal.get("discount_percent")
-    try:
-        if raw_disc is None or str(raw_disc).strip() in ["", "None", "null", "N/A"]:
-            disc = 0
-        else:
-            disc = int(float(str(raw_disc).replace("%", "").strip()))
-            if disc < 0 or disc > 100:
-                disc = 0
-    except Exception:
-        disc = 0
+    # Extract & Validate Discount Percent
+    disc = extract_discount_percent(deal)
 
     formatted_price = f"₹{int(price):,}" if price > 0 else "Price unavailable"
     savings = int(price * (disc / 100.0)) if price > 0 and disc > 0 else 0
@@ -283,7 +324,6 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     """
     req_category = intent.get("category")
     max_price = intent.get("max_price")
-    min_price = intent.get("min_price")
     sort_by_discount = intent.get("sort_by_discount", False)
 
     try:
@@ -291,7 +331,7 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     except Exception:
         price = 0.0
 
-    disc = deal.get("discount_percent", 0) or 0
+    disc = extract_discount_percent(deal)
     rating = float(deal.get("rating", 4.5))
     confidence = float(deal.get("confidence", 0.9))
 
@@ -362,6 +402,7 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
         reasons.append(f"{disc}% discount.")
 
     normalized = normalize_deal(deal, req_category)
+    normalized["discount_percent"] = disc
     normalized["score"] = round(total_score, 2)
     normalized["reasons"] = reasons
     return normalized
@@ -373,7 +414,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     - Search Hierarchy: Exact Area -> Nearby Areas -> City -> Entire Catalog
     - Explicit Fallback Notices: Attaches fallback_notice to intent when expanding search
     - Catalog Buffet Filtering: Actual catalog filter for 'buffet'
-    - 6-Factor Weighted Scoring Engine (35/20/20/10/10/5)
+    - Highest Discount Sorting: Sorts matching dataset by numeric discount_percent descending
     """
     deals = load_deals()
     if not deals:
@@ -391,7 +432,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     user_query = (intent.get("query") or "").lower().strip()
 
     # Check for Buffet filtering requirement (Bug 1 & 2)
-    is_buffet_requested = any(w in user_query for w in ["buffet", "only buffet", "buffet only"]) or intent.get("meal_type") == "buffet"
+    is_buffet_requested = any(w in user_query for w in ["buffet", "only buffet", "buffet only"]) or intent.get("meal_type") == "buffet" or intent.get("occasion") == "Buffet"
 
     target_area = req_area or (req_location if req_location not in ["mumbai", "bangalore", "bengaluru", ""] else None)
     target_city = req_city or (req_location if req_location in ["mumbai", "bangalore", "bengaluru"] else None)
@@ -485,24 +526,21 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         for d in candidate_deals:
             matched_scored_deals.append(compute_weighted_score(d, intent, "catalog"))
 
-    # 3. Weighted Ranking & Highest Discount Sorting (Bug 3)
+    # 3. Weighted Ranking & Highest Discount Sorting (Bug 3 & Bug 4)
     if sort_by_discount:
-        # Validate discount values and sort strictly by numeric discount_percent descending
         for d in matched_scored_deals:
-            try:
-                disc_val = int(float(str(d.get("discount_percent", 0)).replace("%", "").strip()))
-                d["discount_percent"] = max(0, min(100, disc_val))
-            except Exception:
-                d["discount_percent"] = 0
+            d["discount_percent"] = extract_discount_percent(d)
 
         matched_scored_deals.sort(
             key=lambda x: (x.get("discount_percent", 0), x.get("score", 0)),
             reverse=True
         )
 
-        max_disc = max((x.get("discount_percent", 0) for x in matched_scored_deals), default=0)
-        if max_disc == 0:
-            intent["fallback_notice"] = "No higher-discount deals are available for your current filters."
+        # ONLY set discount notice if NO location fallback notice was set AND max discount is 0
+        if not intent.get("fallback_notice"):
+            max_disc = max((x.get("discount_percent", 0) for x in matched_scored_deals), default=0)
+            if max_disc == 0:
+                intent["fallback_notice"] = "No higher-discount deals are available for your current filters."
     else:
         matched_scored_deals.sort(
             key=lambda x: (x["score"], x["confidence"]),

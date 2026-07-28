@@ -118,6 +118,10 @@ class ConversationMemoryManager:
             for k, v in new_intent.items():
                 if v is not None and k != "type":
                     merged[k] = v
+
+            # If user explicitly changed location, reset sort_by_discount to ensure fresh location search priority
+            if new_intent.get("location") or new_intent.get("area"):
+                merged["sort_by_discount"] = False
         else:
             merged = dict(new_intent)
             merged["_completed"] = False

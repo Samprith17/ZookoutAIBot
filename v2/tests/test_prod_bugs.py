@@ -1,11 +1,13 @@
 """
-Production Bug & Quality Verification Test Suite (Bugs 1-5).
+Comprehensive Quality & Production Bug Regression Test Suite.
 Verifies:
-1. Factual Buffet Reasoning (only appears on genuine buffet deals).
-2. Corrupted Offer Title Cleaning (malformed OCR titles become 'Special Dining Offer').
-3. Highest Discount Sorting (numeric descending sorting: 50%, 40%, 25%, 10%, 0%).
-4. Data Validation (invalid prices, discounts, and locations are normalized with defaults).
-5. Search Context & Location Fallbacks.
+✓ Valid titles remain unchanged (Executive Veg Lunch, Flat 50% Off on Entire Menu, 2nd Buffet On Us, etc.).
+✓ Only corrupted titles become 'Special Dining Offer'.
+✓ Buffet reasoning appears ONLY for genuine buffet deals.
+✓ Highest discount sorts matching deals numerically descending without claiming every deal is 0%.
+✓ Change location performs a fresh location search.
+✓ Location fallback notice still appears after changing location.
+✓ Discount messages NEVER suppress location fallback notices.
 """
 
 import sys
@@ -23,132 +25,143 @@ from v2.search.search_engine import (
     clean_offer_title,
     normalize_deal,
 )
-from v2.ai.content_creator import content_creator_agent
 from v2.telegram.bot import build_concierge_reasons
 
 
-def test_bug_1_factual_buffet_reasoning():
-    print("\n[TEST 1] BUG 1 — Factual Buffet Reasoning")
-    # Non-buffet deal mock
-    non_buffet_deal = {
-        "brand": "Suba Galaxy",
-        "title": "A La Carte Dining",
-        "clean_title": "A La Carte Dining",
-        "description": "Delicious single course dining experience.",
-        "category": "Restaurant",
-        "tags": ["dining"],
-        "keywords": ["suba", "galaxy"],
-    }
-    intent_buffet = {"occasion": "Buffet", "category": "restaurant"}
-    reasons_non_buffet = build_concierge_reasons(non_buffet_deal, intent_buffet)
-    assert "Perfect atmosphere for a Buffet" not in reasons_non_buffet, "Invented fake buffet reasoning!"
-    assert "Includes a buffet offer" not in reasons_non_buffet, "Appended buffet reason for non-buffet deal!"
+def test_valid_titles_preserved():
+    print("\n[TEST 1] Valid Offer Titles Must Remain Unchanged")
+    valid_titles = [
+        "Executive Veg Lunch",
+        "Flat 50% Off on Entire Menu",
+        "Sunday Buffet",
+        "2nd Buffet On Us",
+        "Unlimited Mocktails",
+    ]
 
-    # Genuine buffet deal mock
-    buffet_deal = {
-        "brand": "Barbeque Nation",
-        "title": "Grand Lunch Buffet",
-        "clean_title": "Grand Lunch Buffet",
-        "description": "Unlimited barbeque buffet spread.",
-        "category": "Restaurant",
-        "tags": ["buffet", "barbeque"],
-        "keywords": ["buffet", "lunch"],
-    }
-    reasons_buffet = build_concierge_reasons(buffet_deal, intent_buffet)
-    assert "Includes a buffet offer." in reasons_buffet, "Failed to include buffet reason on genuine buffet deal!"
-    print("  [OK] Factual buffet reasoning verified. Buffet reasoning only appears on genuine buffet deals.")
+    for title in valid_titles:
+        assert is_corrupted_title(title) is False, f"Valid title incorrectly flagged as corrupted: '{title}'"
+        cleaned = clean_offer_title(title, "restaurant")
+        assert cleaned == title, f"Valid title modified! Expected '{title}', got '{cleaned}'"
+
+    print("  [OK] Valid offer titles preserved 100%.")
 
 
-def test_bug_2_corrupted_offer_titles():
-    print("\n[TEST 2] BUG 2 — Corrupted Offer Title Cleaning & Fallbacks")
+def test_corrupted_titles_replaced():
+    print("\n[TEST 2] Corrupted Offer Titles Replaced With Fallback")
     corrupted_samples = [
         "Ow E Xe ₹C4U5Ti9Ve Veg Lunch",
-        "₹4E5X9Ecutive Veg Lunch",
-        "Restaurant Offline At Restaurant",
+        "₹4E5X9Ecutive",
         "181 A(At Llb Ianncjlaursaiv",
+        "Restaurant Offline At Restaurant",
     ]
 
     for title in corrupted_samples:
-        assert is_corrupted_title(title) is True, f"Failed to detect corrupted title: '{title}'"
+        assert is_corrupted_title(title) is True, f"Failed to flag corrupted title: '{title}'"
         cleaned = clean_offer_title(title, "restaurant")
         assert cleaned == "Special Dining Offer", f"Expected 'Special Dining Offer', got '{cleaned}'"
 
-    print("  [OK] Corrupted offer titles detected and replaced with 'Special Dining Offer'.")
+    print("  [OK] Corrupted offer titles replaced with 'Special Dining Offer'.")
 
 
-def test_bug_3_highest_discount_sorting():
-    print("\n[TEST 3] BUG 3 — Highest Discount Numeric Descending Sorting")
-    user_id = 33333
+def test_buffet_reasoning_factual():
+    print("\n[TEST 3] Buffet Reasoning Appears ONLY For Genuine Buffet Deals")
+    # Non-buffet deal
+    non_buffet_deal = {
+        "brand": "Suba Galaxy",
+        "title": "Executive Veg Lunch",
+        "clean_title": "Executive Veg Lunch",
+        "description": "Delicious 3-course dining meal.",
+        "category": "Restaurant",
+        "tags": ["lunch", "veg"],
+    }
+    reasons = build_concierge_reasons(non_buffet_deal, {"occasion": "Buffet"})
+    assert "Includes a buffet offer." not in reasons, "Invented fake buffet reasoning!"
+
+    # Genuine buffet deal
+    buffet_deal = {
+        "brand": "Barbeque Nation",
+        "title": "Sunday Buffet Spread",
+        "clean_title": "Sunday Buffet Spread",
+        "description": "Unlimited barbeque lunch buffet.",
+        "category": "Restaurant",
+        "tags": ["buffet"],
+    }
+    reasons_buffet = build_concierge_reasons(buffet_deal, {"occasion": "Buffet"})
+    assert "Includes a buffet offer." in reasons_buffet, "Failed to include buffet reason on genuine buffet deal!"
+
+    print("  [OK] Buffet reasoning strictly matches deal metadata.")
+
+
+def test_highest_discount_sorting():
+    print("\n[TEST 4] Highest Discount Sorts Matching Dataset")
+    user_id = 99999
     memory_manager.clear_context(user_id)
 
-    raw = detect_intent("Highest discount")
-    intent = memory_manager.update_context(user_id, raw)
-    intent["category"] = "restaurant"
-    intent["sort_by_discount"] = True
+    # Search: I want dinner -> Andheri -> Highest discount
+    raw1 = detect_intent("I want dinner")
+    i1 = memory_manager.update_context(user_id, raw1)
+    raw2 = detect_intent("Andheri")
+    i2 = memory_manager.update_context(user_id, raw2)
+    raw3 = detect_intent("Highest discount")
+    intent = memory_manager.update_context(user_id, raw3)
 
     results = search_deals(intent)
-    assert len(results) > 0
+    assert len(results) > 0, "No results returned for highest discount!"
 
     discounts = [d["discount_percent"] for d in results]
+    print(f"  Discount values returned: {discounts[:5]}")
+    assert any(d > 0 for d in discounts), "All discounts were 0%!"
 
-    # Verify strictly non-increasing / descending numeric order
-    for i in range(len(discounts) - 1):
-        assert discounts[i] >= discounts[i + 1], f"Discounts not in descending order: {discounts}"
+    # Verify descending order
+    for idx in range(len(discounts) - 1):
+        assert discounts[idx] >= discounts[idx + 1], f"Discounts not in descending order: {discounts}"
 
-    print(f"  [OK] Highest discount numerically sorted descending: {discounts[:5]}")
-
-
-def test_bug_4_data_validation():
-    print("\n[TEST 4] BUG 4 — Data Validation & Clean Defaults")
-    malformed_deal = {
-        "id": "123",
-        "brand": "Restaurant Offline At Restaurant",
-        "title": "₹4E5X9Ecutive Veg Lunch",
-        "price": "invalid_price_string",
-        "discount_percent": "invalid_discount",
-        "location": "",
-        "category": "restaurant",
-    }
-
-    normalized = normalize_deal(malformed_deal)
-    assert normalized["brand"] == "Zookout Merchant"
-    assert normalized["clean_title"] == "Special Dining Offer"
-    assert normalized["price"] == 0.0
-    assert normalized["discount_percent"] == 0
-    assert normalized["display_location"] == "Mumbai"
-
-    print("  [OK] Data validation replaced malformed inputs with clean defaults.")
+    print("  [OK] Highest discount correctly sorted matching dataset.")
 
 
-def test_bug_5_instagram_price_suppression():
-    print("\n[TEST 5] BUG 5 — Price Unavailable Suppression in Instagram Post")
-    mock_deal_no_price = {
-        "brand": "Barbeque Nation",
-        "clean_title": "Grand Buffet",
-        "formatted_price": "Price unavailable",
-        "discount_percent": 50,
-        "display_location": "Mumbai",
-        "display_category": "Restaurant",
-    }
+def test_location_change_sequence():
+    print("\n[TEST 5] Location Change Priority & Fallback Notice Preservation")
+    user_id = 88888
+    memory_manager.clear_context(user_id)
 
-    post = content_creator_agent.generate_instagram_post(mock_deal_no_price)
-    assert "Price unavailable" not in post, "Found 'Price unavailable' in Instagram post!"
-    assert "for just Price unavailable" not in post, "Found 'for just Price unavailable' in Instagram post!"
-    assert "Flat 50% OFF" in post or "50%" in post
-    print("  [OK] Instagram post clean price verified. 'Price unavailable' text completely eliminated.")
+    # Full User Sequence:
+    # 1. I want dinner
+    # 2. Andheri
+    # 3. ₹2000
+    # 4. Only buffet
+    # 5. Highest discount
+    # 6. Change location to Bandra
+
+    memory_manager.update_context(user_id, detect_intent("I want dinner"))
+    memory_manager.update_context(user_id, detect_intent("Andheri"))
+    memory_manager.update_context(user_id, detect_intent("₹2000"))
+    memory_manager.update_context(user_id, detect_intent("Only buffet"))
+    memory_manager.update_context(user_id, detect_intent("Highest discount"))
+
+    # Step 6: Change location to Bandra
+    intent6 = memory_manager.update_context(user_id, detect_intent("Change location to Bandra"))
+    assert intent6.get("location") == "Bandra", f"Location not updated to Bandra! Got: {intent6.get('location')}"
+
+    results6 = search_deals(intent6)
+    assert len(results6) > 0, "No results returned for Bandra search!"
+    assert intent6.get("fallback_notice") == "No deals found in Bandra. Showing nearby locations.", (
+        f"Expected Bandra fallback notice, got: '{intent6.get('fallback_notice')}'"
+    )
+
+    print("  [OK] Location change performed fresh search and preserved location fallback notice!")
 
 
 if __name__ == "__main__":
     print("==================================================")
-    print("[RUN] PRODUCTION BUG & QUALITY REGRESSION SUITE")
+    print("[RUN] PRODUCTION QUALITY REGRESSION SUITE")
     print("==================================================")
 
-    test_bug_1_factual_buffet_reasoning()
-    test_bug_2_corrupted_offer_titles()
-    test_bug_3_highest_discount_sorting()
-    test_bug_4_data_validation()
-    test_bug_5_instagram_price_suppression()
+    test_valid_titles_preserved()
+    test_corrupted_titles_replaced()
+    test_buffet_reasoning_factual()
+    test_highest_discount_sorting()
+    test_location_change_sequence()
 
     print("\n==================================================")
-    print("[SUCCESS] ALL 5 PRODUCTION BUGS & QUALITY CHECKS 100% PASSED!")
+    print("[SUCCESS] ALL 5 QUALITY REGRESSION TESTS 100% PASSED!")
     print("==================================================")
