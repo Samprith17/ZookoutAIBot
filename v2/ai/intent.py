@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 CATEGORY_KEYWORDS = {
     "restaurant": ["restaurant", "restaurants", "food", "dining", "dinner", "lunch", "breakfast", "buffet", "biryani", "pizza", "thali"],
     "cafe": ["cafe", "cafes", "coffee", "tea", "bakery", "bistro", "snacks"],
-    "spa": ["spa", "spas", "massage", "relax", "wellness", "body massage", "therapy"],
+    "spa": ["spa", "spas", "massage", "relax", "wellness", "body massage", "therapy", "couples massage"],
     "salon": ["salon", "salons", "haircut", "hair", "beauty", "parlor", "facial", "manicure", "pedicure", "grooming"],
     "beauty": ["beauty", "salon", "facial", "makeup", "parlor"],
     "hotel": ["hotel", "hotels", "stay", "room", "accommodation"],
@@ -27,15 +27,20 @@ CATEGORY_KEYWORDS = {
     "family": ["family", "outing"]
 }
 
-# Milestone 8 & 9 & 10 & 11 & 12 Occasion & Mood Mapping
+# Expanded AI Concierge Occasion & Mood Mapping
 OCCASION_MAP = {
-    "Romantic Evening": (["romantic", "candle light", "date night", "romantic dinner", "romantic evening", "anniversary", "date"], "restaurant"),
+    "Romantic Evening": (["romantic", "candle light", "date night", "romantic dinner", "romantic evening", "anniversary", "date", "couples"], "restaurant"),
     "Birthday Celebration": (["birthday", "bday", "b-day", "birthday celebration", "celebrate promotion", "celebrate success", "celebrate"], "restaurant"),
+    "Anniversary": (["anniversary", "wedding anniversary"], "restaurant"),
     "Relaxation & Wellness": (["relax", "relax today", "relaxing day", "need a massage", "feeling stressed", "stress", "wellness"], "spa"),
+    "Couple Spa": (["couple spa", "couples massage", "spa for two", "couple massage"], "spa"),
     "Coffee & Cafe Meetup": (["coffee meeting", "coffee with friends", "cafe meetup"], "cafe"),
-    "Business Lunch & Meeting": (["business meeting", "business lunch", "corporate meeting", "formal meeting"], "restaurant"),
-    "Family Outing & Dinner": (["family dinner", "family lunch", "family outing", "kids outing"], "restaurant"),
-    "Friends Meetup": (["friends meetup", "weekend with friends", "weekend outing", "friends", "hangout", "get together"], "cafe")
+    "Business Lunch & Meeting": (["business meeting", "business lunch", "corporate meeting", "formal meeting", "casual meal", "casual"], "restaurant"),
+    "Family Outing & Dinner": (["family dinner", "family lunch", "family outing", "kids outing", "family", "family friendly"], "restaurant"),
+    "Friends Outing": (["friends meetup", "weekend with friends", "friends outing", "friends", "hangout", "get together"], "cafe"),
+    "Weekend Plans": (["weekend plans", "weekend outing", "weekend getaway", "weekend"], "restaurant"),
+    "Buffet": (["buffet", "unlimited buffet", "dinner buffet", "lunch buffet"], "restaurant"),
+    "Fine Dining": (["fine dining", "gourmet", "luxury dining"], "restaurant")
 }
 
 PREFERENCES = {
@@ -56,9 +61,8 @@ PREFERENCES = {
     "desserts": ["dessert", "desserts", "cake", "ice cream"]
 }
 
-# Stage 5 Expanded Catalog & Indian Location Database
+# Catalog & Major Indian Location Database
 LOCATIONS_MAP = {
-    # Catalog Mumbai Areas
     "andheri": ("Andheri", "Mumbai"),
     "bandra": ("Bandra", "Mumbai"),
     "powai": ("Powai", "Mumbai"),
@@ -88,7 +92,6 @@ LOCATIONS_MAP = {
     "versova": ("Versova", "Mumbai"),
     "lokhandwala": ("Lokhandwala", "Mumbai"),
 
-    # Other Major Indian Cities & Sub-Areas
     "pune": ("Pune", "Pune"),
     "aundh": ("Aundh", "Pune"),
     "parihar chowk": ("Parihar Chowk", "Pune"),
@@ -188,8 +191,8 @@ OUT_OF_SCOPE_KEYWORDS = [
 
 def detect_intent(message: str) -> Dict[str, Any]:
     """
-    AI Customer & Merchant Growth Agent NLU Classifier (Stage 5 Enhanced Search & Location Intelligence).
-    Routes all queries cleanly, extracts locations/categories/budgets accurately, and avoids incorrect fallbacks.
+    AI Customer & Merchant Growth Agent NLU Classifier (AI Deal Concierge Edition).
+    Extracts intents, locations, budgets, occasions, and follow-up modifications.
     """
     text = (message or "").lower().strip()
 
@@ -318,7 +321,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
             intent["category"] = category
             break
 
-    # Stage 5 Location Extraction (Lookup & Pattern Match)
+    # Location Extraction
     loc_match_found = False
     for loc_key, (area_name, city_name) in LOCATIONS_MAP.items():
         if re.search(r"\b" + re.escape(loc_key) + r"\b", text):
@@ -329,7 +332,6 @@ def detect_intent(message: str) -> Dict[str, Any]:
             break
 
     if not loc_match_found:
-        # Regex Pattern Location Match (e.g. "deals in X", "in X", "near X", "X deals")
         pattern_match = re.search(r"\b(?:deals\s+in|deals\s+near|in|near)\s+([a-zA-Z\s]{3,20})\b", text)
         if pattern_match:
             candidate = pattern_match.group(1).strip().title()
@@ -340,12 +342,16 @@ def detect_intent(message: str) -> Dict[str, Any]:
 
     range_match = re.search(r"(?:between|from)?\s*₹?\s*(\d+)\s*(?:and|to|-)\s*₹?\s*(\d+)", text)
     if range_match:
-        intent["min_price"] = int(range_match.group(1))
-        intent["max_price"] = int(range_match.group(2))
+        intent["min_price"] = float(range_match.group(1))
+        intent["max_price"] = float(range_match.group(2))
     else:
-        max_match = re.search(r"(?:under|below|less than)\s*₹?\s*(\d+)", text)
+        max_match = re.search(r"(?:under|below|less than|make it under|make it below|around)\s*₹?\s*(\d+)", text)
         if max_match:
-            intent["max_price"] = int(max_match.group(1))
+            intent["max_price"] = float(max_match.group(1))
+        else:
+            clean_digits = re.sub(r"[^\d]", "", text)
+            if clean_digits and len(clean_digits) in [3, 4, 5] and any(c.isdigit() for c in text):
+                intent["max_price"] = float(clean_digits)
 
     for occ_title, (keywords, default_cat) in OCCASION_MAP.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
@@ -354,6 +360,17 @@ def detect_intent(message: str) -> Dict[str, Any]:
                 intent["category"] = default_cat
             break
 
+    # Standalone Occasion Responses (e.g. "Romantic", "Casual", "Family", "Business")
+    if not intent["occasion"]:
+        if "romantic" in text or "date" in text:
+            intent["occasion"] = "Romantic Evening"
+        elif "family" in text:
+            intent["occasion"] = "Family Outing & Dinner"
+        elif "business" in text or "casual" in text or "work" in text:
+            intent["occasion"] = "Business Lunch & Meeting"
+        elif "birthday" in text or "bday" in text:
+            intent["occasion"] = "Birthday Celebration"
+
     # 5. AI EXPERIENCE PLANNER INTENT CHECK
     is_planner_trigger = any(re.search(r"\b" + re.escape(pt) + r"\b", text) for pt in PLANNER_TRIGGERS) or any(text.startswith(p) for p in ["plan ", "create ", "organize ", "build "])
     if is_planner_trigger:
@@ -361,7 +378,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
         return intent
 
     # 6. Occasion Intent Check
-    if intent["occasion"]:
+    if intent["occasion"] and (intent["location"] or intent["max_price"]):
         if not any(ck in text for ck in COMPARISON_KEYWORDS):
             intent["type"] = "occasion"
             return intent
@@ -381,7 +398,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
         intent["type"] = "personalized"
         return intent
 
-    # 10. Search Intent (Including Location-Only Queries)
+    # 10. Search Intent
     extracted_prefs = []
     for pref, keywords in PREFERENCES.items():
         if any(re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in keywords):
@@ -389,7 +406,7 @@ def detect_intent(message: str) -> Dict[str, Any]:
     intent["preferences"] = extracted_prefs
 
     budget_found = intent["max_price"] is not None or intent["min_price"] is not None
-    is_modifier = any(w in text for w in ["cheaper", "luxury", "premium", "budget", "only", "near", "instead", "deal", "deals", "offer", "offers"])
+    is_modifier = any(w in text for w in ["cheaper", "luxury", "premium", "budget", "only", "near", "instead", "deal", "deals", "offer", "offers", "higher discount"])
     has_date_time = intent["date"] is not None or intent["time_filter"] is not None or intent["meal_type"] is not None
 
     if intent["category"] or intent["location"] or budget_found or intent["occasion"] or intent["preferences"] or is_modifier or has_date_time:

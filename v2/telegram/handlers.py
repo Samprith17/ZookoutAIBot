@@ -1,4 +1,6 @@
 import logging
+import datetime
+import random
 from typing import Dict, List, Any
 import urllib.parse
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -21,7 +23,7 @@ def save_favourite(user_id: int, deal: Dict[str, Any]) -> bool:
 
     deal_id = deal.get("id")
     if deal_id in USER_FAVOURITES[user_id]:
-        return False  # Already saved
+        return False
 
     USER_FAVOURITES[user_id][deal_id] = deal
     profile_manager.update_profile_from_favourite(user_id, deal)
@@ -52,7 +54,7 @@ def get_favourites(user_id: int) -> List[Dict[str, Any]]:
 
 
 def build_deal_keyboard(deal: Dict[str, Any], is_favourite: bool = False) -> InlineKeyboardMarkup:
-    """Builds interactive inline keyboard for a single deal (View, Save/Remove, Share)."""
+    """Builds interactive inline keyboard for a single deal with Voucher Assistant button."""
     deal_id = deal.get("id")
     website = deal.get("website", "https://zookout.com")
     brand = deal.get("brand", "Zookout Merchant")
@@ -69,15 +71,18 @@ def build_deal_keyboard(deal: Dict[str, Any], is_favourite: bool = False) -> Inl
     buttons = []
 
     # Row 1: View Deal & Share Deal
-    row1 = [InlineKeyboardButton("🔗 View Deal", url=website)]
-    row1.append(InlineKeyboardButton("📤 Share", url=share_url))
+    row1 = [InlineKeyboardButton("🔗 View Deal", url=website), InlineKeyboardButton("📤 Share", url=share_url)]
     buttons.append(row1)
 
-    # Row 2: Save / Remove Favourite
+    # Row 2: Save / Remove Favourite & Voucher Assistant Button
+    row2 = []
     if is_favourite:
-        buttons.append([InlineKeyboardButton("❌ Remove", callback_data=f"fav_remove:{deal_id}")])
+        row2.append(InlineKeyboardButton("❌ Remove", callback_data=f"fav_remove:{deal_id}"))
     else:
-        buttons.append([InlineKeyboardButton("❤️ Save", callback_data=f"fav_save:{deal_id}")])
+        row2.append(InlineKeyboardButton("❤️ Save", callback_data=f"fav_save:{deal_id}"))
+
+    row2.append(InlineKeyboardButton("🎟️ Generate Voucher", callback_data=f"voucher_generate:{deal_id}"))
+    buttons.append(row2)
 
     return InlineKeyboardMarkup(buttons)
 
@@ -111,7 +116,7 @@ def build_confirm_reset_profile_keyboard() -> InlineKeyboardMarkup:
 
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Callback Query Handler for Inline Buttons."""
+    """Callback Query Handler for Inline Buttons (Including Voucher Generation)."""
     query = update.callback_query
     if not query:
         return
@@ -147,7 +152,49 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await query.answer(text="Deal not found in favourites.", show_alert=False)
         return
 
-    # 3. Pagination - Show More Deals
+    # 3. Voucher Assistant: Generate Voucher Code
+    if data.startswith("voucher_generate:"):
+        deal_id = int(data.split(":")[1])
+        cached_deals = USER_SEARCH_CACHE.get(user_id, [])
+        target_deal = next((d for d in cached_deals if d.get("id") == deal_id), None)
+
+        if not target_deal:
+            # Fallback to search if not in search cache
+            from v2.search.search_engine import load_deals, normalize_deal
+            all_deals = load_deals()
+            target = next((d for d in all_deals if d.get("id") == deal_id), None)
+            if target:
+                target_deal = normalize_deal(target)
+
+        if target_deal:
+            code_num = random.randint(100000, 999999)
+            voucher_code = f"ZK-{code_num}"
+            expiry = (datetime.datetime.now() + datetime.timedelta(days=7)).strftime("%d %b %Y")
+
+            brand = target_deal.get("brand", "Zookout Merchant")
+            offer = target_deal.get("clean_title", target_deal.get("title", "Special Offer"))
+            price = target_deal.get("formatted_price", "Price unavailable")
+            disc = target_deal.get("discount_percent", 0)
+            loc = target_deal.get("display_location", "Mumbai")
+
+            voucher_msg = (
+                "🎟️ ZOOKOUT DIGITAL DEAL VOUCHER\n\n"
+                f"🎫 Voucher Code: {voucher_code}\n"
+                f"🏷️ Brand: {brand}\n"
+                f"📝 Offer: {offer}\n"
+                f"💰 Special Price: {price} (Save {disc}% OFF)\n"
+                f"📍 Redemption Location: {loc}\n"
+                f"⏰ Valid Until: {expiry}\n\n"
+                "👉 Present this digital voucher at venue redemption!"
+            )
+            await query.answer(text="🎟️ Voucher Generated Successfully!", show_alert=False)
+            if query.message:
+                await query.message.reply_text(voucher_msg)
+        else:
+            await query.answer(text="Unable to generate voucher.", show_alert=False)
+        return
+
+    # 4. Pagination - Show More Deals
     if data.startswith("more:"):
         offset = int(data.split(":")[1])
         cached_deals = USER_SEARCH_CACHE.get(user_id, [])
@@ -185,7 +232,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await query.message.reply_text("✅ All matching deals have been displayed!")
         return
 
-    # 4. Clear Favourites Confirmation
+    # 5. Clear Favourites Confirmation
     if data == "fav_clear_confirm":
         clear_favourites(user_id)
         await query.answer(text="🗑️ All favourites cleared!", show_alert=False)
@@ -199,7 +246,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await query.message.edit_text("Action cancelled. Your favourites are safe.")
         return
 
-    # 5. Profile Reset Confirmation
+    # 6. Profile Reset Confirmation
     if data == "profile_reset_confirm":
         profile_manager.reset_profile(user_id)
         await query.answer(text="🗑️ Profile reset!", show_alert=False)

@@ -10,7 +10,7 @@ from telegram.ext import (
 )
 
 from config import BOT_TOKEN
-from v2.search.search_engine import search_deals, normalize_deal
+from v2.search.search_engine import search_deals, normalize_deal, get_nearby_locations, get_deal_comparison
 from v2.ai.intent import detect_intent
 from v2.ai.memory import memory_manager
 from v2.ai.profile import profile_manager
@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 
 def generate_no_deals_response(intent: dict) -> str:
     """
-    Stage 5: Dataset-Aware 'No Deals Found' Response Engine.
-    Explains requested search criteria, lists available locations & categories, and suggests available searches.
+    AI Deal Concierge Dataset-Aware 'No Deals Found' Response Engine.
+    Explains requested search criteria, suggests nearby alternative locations, and provides active catalog suggestions.
     """
     query = intent.get("query") or "your request"
     cat = intent.get("category")
@@ -52,13 +52,15 @@ def generate_no_deals_response(intent: dict) -> str:
 
     crit_text = f" ({', '.join(criteria)})" if criteria else ""
 
-    loc_str = "Mumbai (Andheri, Bandra, Juhu, Powai, Thane, Borivali, Dadar, Worli, Lower Parel, Malad)"
+    nearby = get_nearby_locations(loc) if loc else ["Andheri", "Bandra", "Juhu"]
+    nearby_text = f"Try nearby locations: {', '.join(nearby)}"
 
     return (
         f"🔍 No Deals Found for \"{query}\"{crit_text}\n\n"
-        "We currently don't have active catalog deals matching your exact search criteria.\n\n"
+        f"We currently don't have active catalog deals matching your exact search criteria in {loc or 'this area'}.\n\n"
+        f"💡 {nearby_text}\n\n"
         "📊 Active Catalog Overview:\n"
-        "• Locations Available: " + loc_str + "\n"
+        "• Locations Available: Mumbai (Andheri, Bandra, Juhu, Powai, Thane, Borivali, Dadar, Worli, Lower Parel, Malad)\n"
         "• Categories Available: Restaurant, Salon, Spa, Hotel, Cafe, Entertainment\n"
         "• Price Range: ₹9 – ₹999\n\n"
         "💡 Try exploring available catalog searches:\n"
@@ -133,33 +135,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"👋 Hello {first_name}!\n\n"
-        "I'm Zookout AI - Customer Savings, Merchant Growth & Business Intelligence Agent.\n\n"
-        "I can help customers discover deal savings, help merchants generate content, AND provide business analytics:\n\n"
-        "🛒 For Customers:\n"
-        "• My Savings | Show Opportunities\n"
-        "• Romantic dinner in Andheri under ₹2000\n\n"
+        "I'm Zookout AI Deal Concierge, your AI assistant for discovering local deals, dining, spas, salons, and activities across India!\n\n"
+        "🛒 AI Concierge Features:\n"
+        "• Multi-turn Deal Concierge (\"I want dinner\")\n"
+        "• Romantic dinner in Andheri under ₹2000\n"
+        "• Plan a romantic evening in Andheri under ₹3000\n"
+        "• Compare restaurants in Mumbai\n"
+        "• My Savings | Show Opportunities\n\n"
         "🏪 For Merchants & Content Creators:\n"
         "• Create Instagram Post | Create Facebook Post\n"
-        "• Merchant Dashboard | Offer Health | Compare My Offers\n\n"
+        "• Merchant Dashboard | Offer Health\n\n"
         "📊 For Business Intelligence & Analytics:\n"
-        "• Business Dashboard | Catalog Summary\n"
-        "• Category Analytics | Brand Analytics\n"
-        "• Location Analytics | Discount Analytics\n"
-        "• Price Analytics | Catalog Health\n"
-        "• Offer Distribution | Business Insights\n"
-        "• What should we improve? | Business Help"
+        "• Business Dashboard | Catalog Summary | Category Analytics | Location Analytics"
     )
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 Zookout AI Agent Features\n\n"
+        "🤖 Zookout AI Deal Concierge Features\n\n"
         "Available Customer Commands:\n"
         "💰 Customer Savings Profile (`My Savings`)\n"
         "🔥 Opportunity Detection (`Show Opportunities`)\n"
-        "🔍 Multi-Constraint Search (`Romantic dinner in Andheri under ₹2000`)\n"
-        "🗓️ AI Experience Planner (`Plan a romantic evening under ₹2000`)\n"
-        "📊 Deal Comparison (`Compare restaurants`)\n\n"
+        "🔍 Multi-Turn Deal Concierge (`I want dinner`)\n"
+        "🗓️ AI Experience Planner (`Plan a romantic evening in Andheri under ₹3000`)\n"
+        "📊 Deal Comparison (`Compare restaurants in Mumbai`)\n\n"
         "🏪 Merchant & AI Content Creator Commands:\n"
         "📸 `Create Instagram Post` | 📘 `Create Facebook Post` | 💬 `Create WhatsApp Promotion` | 📊 `Merchant Dashboard`\n\n"
         "📊 Business Intelligence & Analytics Commands:\n"
@@ -523,43 +522,22 @@ async def compare_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
     if not intent.get("category"):
         intent["category"] = "restaurant"
 
-    results = search_deals(intent)
+    results = get_deal_comparison(intent)
     if not results:
         no_deals_msg = generate_no_deals_response(intent)
         await update.message.reply_text(no_deals_msg)
         return
 
-    comp_deals = [normalize_deal(d) for d in results[:5]]
-    for d in comp_deals:
-        profile_manager.add_recently_viewed(user_id, d)
-
-    USER_SEARCH_CACHE[user_id] = comp_deals
-
-    reply = "📊 Deal Comparison\n\n"
-    for i, deal in enumerate(comp_deals, 1):
+    reply = "📊 Deal Comparison Table\n\n"
+    for i, item in enumerate(results, 1):
         reply += (
-            f"{i}. 🏷️ Brand: {deal.get('brand')}\n"
-            f"📂 Category: {deal.get('display_category')}\n"
-            f"📝 Offer: {deal.get('clean_title')}\n"
-            f"💰 Price: {deal.get('formatted_price')}\n"
-            f"🎁 Discount: {deal.get('discount_percent')}%\n"
-            f"📍 Location: {deal.get('display_location')}\n\n"
+            f"{i}. 🏷️ Brand: {item['brand']}\n"
+            f"   💰 Price: {item['price']}\n"
+            f"   🎁 Discount: {item['discount']} (Savings: {item['savings']})\n"
+            f"   {item['rating']} | 🏆 {item['recommendation']}\n\n"
         )
 
-    best_overall = comp_deals[0]
-
-    valid_prices = [d for d in comp_deals if float(str(d.get("price", "0")).replace(",", "")) > 0]
-    cheapest = min(valid_prices, key=lambda x: float(str(x.get("price", "999999")).replace(",", "")), default=best_overall)
-
-    highest_discount = max(comp_deals, key=lambda x: x.get("discount_percent", 0), default=best_overall)
-
-    reply += "━━━━━━━━━━━━━━━━━━\n\n"
-    reply += f"🏆 Best Overall\n{best_overall.get('brand')} – Highest overall recommendation score matching your category, location, and budget criteria.\n\n"
-    reply += f"💰 Cheapest\n{cheapest.get('brand')} – Lowest payable price at {cheapest.get('formatted_price')} among all compared options.\n\n"
-    reply += f"🎁 Highest Discount\n{highest_discount.get('brand')} – Maximum savings offer at {highest_discount.get('discount_percent', 0)}% OFF."
-
-    best_keyboard = build_deal_keyboard(best_overall)
-    await update.message.reply_text(reply, reply_markup=best_keyboard, disable_web_page_preview=True)
+    await update.message.reply_text(reply, disable_web_page_preview=True)
 
 
 async def personalized_recommendations_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -975,10 +953,34 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await fallback_handler(update, context)
             return
 
-        # Context-Aware Concierge & Savings Processing
+        # Context-Aware Concierge & Multi-Turn Processing
         intent = memory_manager.update_context(user_id, raw_intent)
         if intent["type"] == "search":
             profile_manager.update_profile_from_intent(user_id, intent)
+
+        # Multi-Turn Concierge Prompt Resolution Check
+        cat = intent.get("category")
+        loc = intent.get("location") or intent.get("area") or intent.get("city")
+        price = intent.get("max_price")
+        occ = intent.get("occasion")
+
+        # Check if generic partial request missing fields
+        is_generic_query = len(message.split()) <= 4 and (not loc or not price)
+
+        if is_generic_query and cat and not loc:
+            memory_manager.set_pending_field(user_id, "location")
+            await update.message.reply_text("Which location are you looking for?")
+            return
+
+        if is_generic_query and cat and loc and not price:
+            memory_manager.set_pending_field(user_id, "budget")
+            await update.message.reply_text("What's your budget?")
+            return
+
+        if is_generic_query and cat and loc and price and not occ and cat in ["restaurant", "spa"]:
+            memory_manager.set_pending_field(user_id, "occasion")
+            await update.message.reply_text("Is this for a romantic dinner, family outing, business meeting, or casual meal?")
+            return
 
         logger.info(f"User ID: {user_id} | Message: {message} | Merged Intent: {intent}")
 
@@ -1093,7 +1095,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     app.add_error_handler(error_handler)
 
-    print("[OK] Zookout AI Bot is running with Stage 5 Search Intelligence & Location Understanding...")
+    print("[OK] Zookout AI Bot is running with AI Deal Concierge & Multi-Turn Conversations...")
     app.run_polling()
 
 
