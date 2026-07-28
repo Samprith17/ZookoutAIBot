@@ -465,6 +465,7 @@ async def occasion_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, r
         await update.message.reply_text(no_deals_msg)
         return
 
+    memory_manager.mark_completed(user_id)
     USER_SEARCH_CACHE[user_id] = results
     best_match = normalize_deal(results[0])
     other_matches = [normalize_deal(d) for d in results[1:4]]
@@ -528,6 +529,7 @@ async def compare_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ra
         await update.message.reply_text(no_deals_msg)
         return
 
+    memory_manager.mark_completed(user_id)
     reply = "📊 Deal Comparison Table\n\n"
     for i, item in enumerate(results, 1):
         reply += (
@@ -953,6 +955,16 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await fallback_handler(update, context)
             return
 
+        # Check if user sent a continuation modifier without an active search context
+        is_modifier_query = any(w in message.lower() for w in [
+            "cheaper", "lower price", "higher discount", "best discount", "only buffet"
+        ])
+        if is_modifier_query and not memory_manager.is_session_active(user_id):
+            await update.message.reply_text(
+                "There is no active search to continue. Please start a new search (e.g. 'Restaurants in Bandra' or 'I want dinner')."
+            )
+            return
+
         # Context-Aware Concierge & Multi-Turn Processing
         intent = memory_manager.update_context(user_id, raw_intent)
         if intent["type"] == "search":
@@ -991,6 +1003,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(no_deals_msg)
             return
 
+        memory_manager.mark_completed(user_id)
         USER_SEARCH_CACHE[user_id] = results
 
         best_match = normalize_deal(results[0])

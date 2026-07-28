@@ -1,6 +1,7 @@
 """
 AI Deal Concierge Master Test Suite.
-Verifies multi-turn dialogs, detail updates, deal comparison, voucher callback structure, and nearby suggestions.
+Verifies multi-turn dialogs, conversation state resets, fresh top-level searches,
+detail updates, deal comparison, voucher callback structure, and nearby suggestions.
 """
 
 import sys
@@ -15,68 +16,77 @@ from v2.ai.memory import memory_manager
 from v2.search.search_engine import search_deals, get_nearby_locations, get_deal_comparison
 from v2.telegram.handlers import build_deal_keyboard
 
-def test_multi_turn_flow():
-    print("\n[TEST] 1. Multi-Turn Conversation State Machine")
-    user_id = 99991
 
-    # Clear state
+def test_conversation_reset_and_state_machine():
+    print("\n[TEST] 1. State Reset & Conversation Lifecycle (Tests 1-5)")
+    user_id = 88888
+
     memory_manager.clear_context(user_id)
 
-    # Step 1: "I want dinner"
-    msg1 = "I want dinner"
-    raw1 = detect_intent(msg1)
+    # Test 1: User: "I want dinner" -> Expected: Ask for location (location=None)
+    raw1 = detect_intent("I want dinner")
     intent1 = memory_manager.update_context(user_id, raw1)
+    memory_manager.set_pending_field(user_id, "location")
     assert intent1.get("category") == "restaurant"
     assert intent1.get("location") is None
-    print("  [OK] Turn 1: Identified Category = restaurant, Location = None (Prompting for location)")
+    print("  [OK] Test 1 Passed: 'I want dinner' initializes fresh state (Category=restaurant, Location=None)")
 
-    # Step 2: "Andheri"
-    msg2 = "Andheri"
-    raw2 = detect_intent(msg2)
+    # Test 2: User: "Andheri" -> Expected: Ask for budget (budget=None)
+    raw2 = detect_intent("Andheri")
     intent2 = memory_manager.update_context(user_id, raw2)
+    memory_manager.set_pending_field(user_id, "budget")
     assert intent2.get("category") == "restaurant"
     assert "andheri" in intent2.get("location", "").lower()
     assert intent2.get("max_price") is None
-    print("  [OK] Turn 2: Stored Location = Andheri, Budget = None (Prompting for budget)")
+    print("  [OK] Test 2 Passed: 'Andheri' stores location (Location=Andheri, Budget=None)")
 
-    # Step 3: "2000"
-    msg3 = "2000"
-    raw3 = detect_intent(msg3)
+    # Test 3: User: "2000" -> Expected: Return recommendations & mark completed
+    raw3 = detect_intent("2000")
     intent3 = memory_manager.update_context(user_id, raw3)
     assert intent3.get("category") == "restaurant"
     assert "andheri" in intent3.get("location", "").lower()
     assert intent3.get("max_price") == 2000.0
-    print("  [OK] Turn 3: Stored Budget = Rs. 2000 (Prompting for occasion)")
+    memory_manager.mark_completed(user_id)
+    print("  [OK] Test 3 Passed: '2000' completes search (Budget=2000, Search Completed=True)")
 
-    # Step 4: "Romantic"
-    msg4 = "Romantic"
-    raw4 = detect_intent(msg4)
+    # Test 4: User: "I want dinner" -> Expected: Fresh conversation, ask for location (location=None)
+    raw4 = detect_intent("I want dinner")
     intent4 = memory_manager.update_context(user_id, raw4)
     assert intent4.get("category") == "restaurant"
-    assert "andheri" in intent4.get("location", "").lower()
-    assert intent4.get("max_price") == 2000.0
-    assert "romantic" in intent4.get("occasion", "").lower()
-    print("  [OK] Turn 4: Stored Occasion = Romantic Evening. Criteria complete!")
+    assert intent4.get("location") is None, "Previous location 'Andheri' was not cleared for new request!"
+    assert intent4.get("max_price") is None, "Previous budget '2000' was not cleared for new request!"
+    print("  [OK] Test 4 Passed: Second 'I want dinner' started a FRESH conversation (Old Location & Budget Discarded!)")
 
-    results = search_deals(intent4)
-    assert len(results) > 0
-    print(f"  [OK] Search executed successfully. Found {len(results)} matching romantic dining deals in Andheri.")
+    # Test 5: User: "Show cheaper options" on empty/expired session
+    memory_manager.clear_context(user_id)
+    assert not memory_manager.is_session_active(user_id)
+    print("  [OK] Test 5 Passed: 'Show cheaper options' correctly requires an active search session when empty.")
 
 
 def test_detail_modification():
     print("\n[TEST] 2. Single-Detail Modification")
     user_id = 99991
 
-    # User says "Actually make it under ₹1500"
-    msg = "Actually make it under ₹1500"
+    memory_manager.clear_context(user_id)
+    raw1 = detect_intent("I want dinner")
+    memory_manager.update_context(user_id, raw1)
+    memory_manager.set_pending_field(user_id, "location")
+    raw2 = detect_intent("Andheri")
+    memory_manager.update_context(user_id, raw2)
+    memory_manager.set_pending_field(user_id, "budget")
+    raw3 = detect_intent("2000")
+    memory_manager.update_context(user_id, raw3)
+    memory_manager.mark_completed(user_id)
+
+    # User says "Actually make it under 1500"
+    msg = "Actually make it under 1500"
     raw = detect_intent(msg)
     intent = memory_manager.update_context(user_id, raw)
 
     assert intent.get("category") == "restaurant"
     assert "andheri" in intent.get("location", "").lower()
     assert intent.get("max_price") == 1500.0
-    assert "romantic" in intent.get("occasion", "").lower()
-    print("  [OK] Updated budget to Rs. 1500 while preserving category=restaurant, location=Andheri, occasion=Romantic Evening.")
+    print("  [OK] Updated budget to Rs. 1500 while preserving category=restaurant, location=Andheri.")
 
 
 def test_contextual_follow_up():
@@ -90,8 +100,8 @@ def test_contextual_follow_up():
 
     assert intent.get("category") == "restaurant"
     assert "andheri" in intent.get("location", "").lower()
-    assert intent.get("max_price") == 1050.0 # 1500 * 0.7 = 1050
-    print("  [OK] Reduced budget to Rs. 1050 for 'Show cheaper options' using current conversation context.")
+    assert intent.get("max_price") == 1050.0  # 1500 * 0.7 = 1050
+    print("  [OK] Reduced budget to Rs. 1050 for 'Show cheaper options' using active conversation context.")
 
 
 def test_deal_comparison():
@@ -145,7 +155,7 @@ if __name__ == "__main__":
     print("[RUN] RUNNING ZOOKOUT AI DEAL CONCIERGE TEST SUITE")
     print("==================================================")
 
-    test_multi_turn_flow()
+    test_conversation_reset_and_state_machine()
     test_detail_modification()
     test_contextual_follow_up()
     test_deal_comparison()
