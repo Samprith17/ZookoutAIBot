@@ -87,7 +87,9 @@ def is_corrupted_title(title: str) -> bool:
 def get_clean_title_fallback(category: str) -> str:
     """Returns clean category fallback title for corrupted offer titles."""
     c = (category or "").lower()
-    if any(k in c for k in ["restaurant", "dining", "food", "buffet"]):
+    if "buffet" in c:
+        return "Special Buffet Offer"
+    if any(k in c for k in ["restaurant", "dining", "food"]):
         return "Special Dining Offer"
     if any(k in c for k in ["spa", "massage", "wellness"]):
         return "Premium Spa Experience"
@@ -429,8 +431,8 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     AI Deal Concierge Search Engine:
     - Search Hierarchy: Exact Area -> Nearby Areas -> City -> Entire Catalog
-    - Explicit Fallback Notices: Attaches fallback_notice to intent when expanding search
-    - Catalog Buffet Filtering: Actual catalog filter for 'buffet'
+    - Mandatory Buffet Filter: Filters candidates strictly for buffet deals when requested
+    - Explicit Fallback Notices: Attaches fallback_notice to intent when expanding search or when no buffet deals exist
     - Highest Discount Sorting: Sorts matching dataset by numeric discount_percent descending
     """
     deals = load_deals()
@@ -478,18 +480,22 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         candidate_deals.append(deal)
 
-    # If Buffet requested: Filter candidates first for buffet across title, desc, tags, keywords
+    # If Buffet requested: MANDATORY filter candidates first for buffet across title, desc, tags, keywords
     if is_buffet_requested:
         buffet_deals = []
         for deal in candidate_deals:
-            full_txt = f"{deal.get('clean_title','')} {deal.get('title','')} {deal.get('description','')} {deal.get('category','')} {' '.join(deal.get('tags',[]))} {' '.join(deal.get('keywords',[]))}".lower()
+            clean_t = clean_offer_title(deal.get("title", ""), deal.get("category", "buffet"))
+            full_txt = f"{clean_t} {deal.get('title','')} {deal.get('description','')} {deal.get('category','')} {' '.join(deal.get('tags',[]))} {' '.join(deal.get('keywords',[]))}".lower()
             if "buffet" in full_txt:
                 buffet_deals.append(deal)
+
+        logger.info(f"[BUFFET SEARCH PIPELINE] Candidates before buffet filter: {len(candidate_deals)} | Candidates after buffet filter: {len(buffet_deals)}")
 
         if buffet_deals:
             candidate_deals = buffet_deals
             intent["fallback_notice"] = None
         else:
+            logger.info(f"[BUFFET SEARCH PIPELINE] 0 buffet deals found for query/location. Returning fallback message.")
             intent["fallback_notice"] = "I couldn't find buffet deals near your location.\n\nWould you like to see all restaurant deals instead?"
             return []
 
@@ -523,6 +529,11 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
                 intent["fallback_notice"] = f"No deals found in {target_area.title()}. Showing nearby locations."
                 for d in nearby_deals:
                     matched_scored_deals.append(compute_weighted_score(d, intent, "nearby"))
+            elif is_buffet_requested:
+                # If buffet mode is active and 0 buffet deals exist in exact or nearby area, return empty list with fallback notice!
+                logger.info(f"[BUFFET LOCATION FALLBACK] 0 buffet deals in {target_area} or nearby areas.")
+                intent["fallback_notice"] = f"I couldn't find buffet deals in {target_area.title()} or nearby locations.\n\nWould you like to see all restaurant deals instead?"
+                return []
             else:
                 # Step 3: City Fallback
                 city_deals = candidate_deals
@@ -549,7 +560,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         for d in candidate_deals:
             matched_scored_deals.append(compute_weighted_score(d, intent, "catalog"))
 
-    # 3. Weighted Ranking & Highest Discount Sorting (Bug 2 & Bug 4)
+    # 3. Weighted Ranking & Highest Discount Sorting
     if sort_by_discount:
         for d in matched_scored_deals:
             d["discount_percent"] = extract_discount_percent(d)
@@ -559,7 +570,6 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
             reverse=True
         )
 
-        # ONLY set discount notice if NO location fallback notice was set AND max discount is 0
         if not intent.get("fallback_notice"):
             max_disc = max((x.get("discount_percent", 0) for x in matched_scored_deals), default=0)
             if max_disc == 0:
@@ -569,6 +579,11 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
             key=lambda x: (x["score"], x["confidence"]),
             reverse=True
         )
+
+    # Log buffet metadata for every returned deal if buffet mode is active
+    if is_buffet_requested:
+        for idx, d in enumerate(matched_scored_deals[:4]):
+            logger.info(f"[BUFFET RETURNED DEAL {idx+1}] ID: {d.get('id')} | Title: '{d.get('clean_title')}' | Tags: {d.get('tags')} | Keywords: {d.get('keywords')}")
 
     return matched_scored_deals
 
