@@ -431,12 +431,13 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     AI Deal Concierge Search Engine:
     - Search Hierarchy: Exact Area -> Nearby Areas -> City -> Entire Catalog
-    - Mandatory Buffet Filter: Filters candidates strictly for buffet deals when requested
+    - Mandatory Buffet Filter: Filters candidates strictly for buffet deals when requested BEFORE ranking
     - Explicit Fallback Notices: Attaches fallback_notice to intent when expanding search or when no buffet deals exist
     - Highest Discount Sorting: Sorts matching dataset by numeric discount_percent descending
     """
     deals = load_deals()
     if not deals:
+        logger.info("[SEARCH_DEALS] Catalog empty, returning []")
         return []
 
     intent = intent or {}
@@ -461,6 +462,8 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     target_area = req_area or (req_location if req_location not in ["mumbai", "bangalore", "bengaluru", ""] else None)
     target_city = req_city or (req_location if req_location in ["mumbai", "bangalore", "bengaluru"] else None)
 
+    logger.info(f"[SEARCH_DEALS ENTRY] user_query='{user_query}' | is_buffet_requested={is_buffet_requested} | target_area='{target_area}' | target_city='{target_city}' | max_price={max_price}")
+
     # 1. Base Filter by Category & Price
     candidate_deals = []
     for deal in deals:
@@ -480,7 +483,9 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         candidate_deals.append(deal)
 
-    # If Buffet requested: MANDATORY filter candidates first for buffet across title, desc, tags, keywords
+    logger.info(f"[CANDIDATE FILTER] Count after Category & Price filter: {len(candidate_deals)}")
+
+    # 2. MANDATORY BUFFET FILTER (EXECUTED BEFORE RANKING)
     if is_buffet_requested:
         buffet_deals = []
         for deal in candidate_deals:
@@ -489,17 +494,18 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
             if "buffet" in full_txt:
                 buffet_deals.append(deal)
 
-        logger.info(f"[BUFFET SEARCH PIPELINE] Candidates before buffet filter: {len(candidate_deals)} | Candidates after buffet filter: {len(buffet_deals)}")
+        logger.info(f"[BUFFET FILTER LOG] Candidates before buffet filter: {len(candidate_deals)} | Candidates after buffet filter: {len(buffet_deals)}")
 
         if buffet_deals:
             candidate_deals = buffet_deals
             intent["fallback_notice"] = None
         else:
-            logger.info(f"[BUFFET SEARCH PIPELINE] 0 buffet deals found for query/location. Returning fallback message.")
-            intent["fallback_notice"] = "I couldn't find buffet deals near your location.\n\nWould you like to see all restaurant deals instead?"
+            loc_disp = target_area.title() if target_area else "your location"
+            logger.info(f"[BUFFET FILTER LOG] 0 buffet deals found for {loc_disp}. Returning [] with fallback notice.")
+            intent["fallback_notice"] = f"I couldn't find buffet deals in {loc_disp} or nearby locations.\n\nWould you like to see all restaurant deals instead?"
             return []
 
-    # 2. Location Filtering Pipeline: Exact Area -> Nearby Areas -> City -> Catalog
+    # 3. Location Filtering Pipeline: Exact Area -> Nearby Areas -> City -> Catalog
     matched_scored_deals = []
 
     if target_area:
@@ -510,6 +516,8 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
             full_txt = f"{deal.get('location','')} {deal.get('title','')} {deal.get('description','')} {' '.join(deal.get('tags',[]))} {' '.join(deal.get('keywords',[]))}".lower()
             if target_area == deal_area or target_area in full_txt:
                 exact_deals.append(deal)
+
+        logger.info(f"[LOCATION PIPELINE] Exact area ('{target_area}') matches count: {len(exact_deals)}")
 
         if exact_deals:
             intent["fallback_notice"] = None
@@ -525,17 +533,19 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
                 if any(nb.lower() in deal_area or nb.lower() in full_txt for nb in nearby_list):
                     nearby_deals.append(deal)
 
+            logger.info(f"[LOCATION PIPELINE] Nearby areas ({nearby_list}) matches count: {len(nearby_deals)}")
+
             if nearby_deals:
                 intent["fallback_notice"] = f"No deals found in {target_area.title()}. Showing nearby locations."
                 for d in nearby_deals:
                     matched_scored_deals.append(compute_weighted_score(d, intent, "nearby"))
             elif is_buffet_requested:
                 # If buffet mode is active and 0 buffet deals exist in exact or nearby area, return empty list with fallback notice!
-                logger.info(f"[BUFFET LOCATION FALLBACK] 0 buffet deals in {target_area} or nearby areas.")
+                logger.info(f"[BUFFET LOCATION FALLBACK] 0 buffet deals in {target_area} or nearby areas. Returning []")
                 intent["fallback_notice"] = f"I couldn't find buffet deals in {target_area.title()} or nearby locations.\n\nWould you like to see all restaurant deals instead?"
                 return []
             else:
-                # Step 3: City Fallback
+                # Step 3: City Fallback for general dining
                 city_deals = candidate_deals
                 if city_deals:
                     intent["fallback_notice"] = f"No deals found in {target_area.title()}. Showing nearby locations."
@@ -560,7 +570,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         for d in candidate_deals:
             matched_scored_deals.append(compute_weighted_score(d, intent, "catalog"))
 
-    # 3. Weighted Ranking & Highest Discount Sorting
+    # 4. Weighted Ranking & Highest Discount Sorting
     if sort_by_discount:
         for d in matched_scored_deals:
             d["discount_percent"] = extract_discount_percent(d)
@@ -582,8 +592,9 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     # Log buffet metadata for every returned deal if buffet mode is active
     if is_buffet_requested:
+        logger.info(f"[BUFFET SEARCH EXIT] Returning {len(matched_scored_deals)} scored buffet deals.")
         for idx, d in enumerate(matched_scored_deals[:4]):
-            logger.info(f"[BUFFET RETURNED DEAL {idx+1}] ID: {d.get('id')} | Title: '{d.get('clean_title')}' | Tags: {d.get('tags')} | Keywords: {d.get('keywords')}")
+            logger.info(f"[BUFFET METADATA DEAL {idx+1}] ID: {d.get('id')} | Brand: '{d.get('brand')}' | Title: '{d.get('clean_title')}' | Tags: {d.get('tags')} | Keywords: {d.get('keywords')}")
 
     return matched_scored_deals
 

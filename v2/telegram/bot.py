@@ -1005,20 +1005,29 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Is this for a romantic dinner, family outing, business meeting, or casual meal?")
             return
 
-        logger.info(f"User ID: {user_id} | Message: {message} | Merged Intent: {intent}")
+        logger.info(f"[TELEGRAM HANDLER] User ID: {user_id} | Message: '{message}' | Merged Intent: {intent}")
 
         results = search_deals(intent)
         memory_manager.mark_completed(user_id)
 
-        if intent.get("fallback_notice"):
-            await update.message.reply_text(f"ℹ️ {intent['fallback_notice']}")
+        logger.info(f"[TELEGRAM HANDLER] search_deals returned count: {len(results)} | fallback_notice: '{intent.get('fallback_notice')}'")
 
         if not results:
-            no_deals_msg = generate_no_deals_response(intent)
-            await update.message.reply_text(no_deals_msg)
+            if intent.get("fallback_notice"):
+                logger.info(f"[TELEGRAM HANDLER] Sending fallback_notice (0 results returned, skipping recommendation cards): '{intent['fallback_notice']}'")
+                await update.message.reply_text(intent["fallback_notice"])
+            else:
+                logger.info(f"[TELEGRAM HANDLER] Sending generate_no_deals_response (0 results returned)")
+                no_deals_msg = generate_no_deals_response(intent)
+                await update.message.reply_text(no_deals_msg)
             return
 
+        if intent.get("fallback_notice"):
+            logger.info(f"[TELEGRAM HANDLER] Sending fallback notice notice prefix with {len(results)} results: '{intent['fallback_notice']}'")
+            await update.message.reply_text(f"ℹ️ {intent['fallback_notice']}")
+
         USER_SEARCH_CACHE[user_id] = results
+        logger.info(f"[TELEGRAM HANDLER] Rendering recommendation cards for best match: '{results[0].get('clean_title')}'")
 
         best_match = results[0]
         other_matches = results[1:4]
