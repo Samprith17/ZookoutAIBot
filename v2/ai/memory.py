@@ -105,8 +105,12 @@ class ConversationMemoryManager:
             # Merge with existing active context
             merged = dict(current_context)
 
-            # Apply modifiers
-            if "cheaper" in query_text or "lower price" in query_text:
+            # Apply modifiers & dining_type filters
+            if "buffet" in query_text or new_intent.get("dining_type") == "buffet" or new_intent.get("meal_type") == "buffet":
+                merged["dining_type"] = "buffet"
+                merged["meal_type"] = "buffet"
+                merged["category"] = "restaurant"
+            elif "cheaper" in query_text or "lower price" in query_text:
                 old_max = merged.get("max_price")
                 merged["max_price"] = int(old_max * 0.7) if old_max and old_max > 300 else 500
             elif "higher discount" in query_text or "best discount" in query_text or "highest discount" in query_text or "highest" in query_text:

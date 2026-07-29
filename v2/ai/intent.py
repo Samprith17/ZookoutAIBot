@@ -305,8 +305,11 @@ def detect_intent(message: str) -> Dict[str, Any]:
         intent["meal_type"] = "dinner"
     elif "breakfast" in text:
         intent["meal_type"] = "breakfast"
-    elif "buffet" in text:
+    if "buffet" in text:
         intent["meal_type"] = "buffet"
+        intent["dining_type"] = "buffet"
+        if not intent["category"]:
+            intent["category"] = "restaurant"
 
     if "solo" in text:
         intent["group_size"] = "solo"

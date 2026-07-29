@@ -449,7 +449,12 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     user_query = (intent.get("query") or "").lower().strip()
 
     # Check for Buffet filtering requirement
-    is_buffet_requested = any(w in user_query for w in ["buffet", "only buffet", "buffet only"]) or intent.get("meal_type") == "buffet" or intent.get("occasion") == "Buffet"
+    is_buffet_requested = (
+        any(w in user_query for w in ["buffet", "only buffet", "buffet only", "i want buffet", "show buffet"])
+        or intent.get("dining_type") == "buffet"
+        or intent.get("meal_type") == "buffet"
+        or intent.get("occasion") == "Buffet"
+    )
 
     target_area = req_area or (req_location if req_location not in ["mumbai", "bangalore", "bengaluru", ""] else None)
     target_city = req_city or (req_location if req_location in ["mumbai", "bangalore", "bengaluru"] else None)
@@ -477,7 +482,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     if is_buffet_requested:
         buffet_deals = []
         for deal in candidate_deals:
-            full_txt = f"{deal.get('title','')} {deal.get('description','')} {deal.get('category','')} {' '.join(deal.get('tags',[]))} {' '.join(deal.get('keywords',[]))}".lower()
+            full_txt = f"{deal.get('clean_title','')} {deal.get('title','')} {deal.get('description','')} {deal.get('category','')} {' '.join(deal.get('tags',[]))} {' '.join(deal.get('keywords',[]))}".lower()
             if "buffet" in full_txt:
                 buffet_deals.append(deal)
 
@@ -485,7 +490,8 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
             candidate_deals = buffet_deals
             intent["fallback_notice"] = None
         else:
-            intent["fallback_notice"] = "No buffet deals found. Showing the closest restaurant deals."
+            intent["fallback_notice"] = "I couldn't find buffet deals near your location.\n\nWould you like to see all restaurant deals instead?"
+            return []
 
     # 2. Location Filtering Pipeline: Exact Area -> Nearby Areas -> City -> Catalog
     matched_scored_deals = []
