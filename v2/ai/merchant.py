@@ -1,4 +1,5 @@
 import logging
+from collections import Counter
 from typing import Dict, List, Any
 from v2.search.search_engine import (
     load_deals, normalize_deal, clean_offer_title, search_deals,
@@ -271,6 +272,10 @@ class MerchantGrowthAgent:
         weakest_cat = sorted_by_score[-1]["cat"] if sorted_by_score else "Salon"
         needing_growth_cat = sorted_by_count[-1]["cat"] if sorted_by_count else "Cafe"
 
+        # Dynamic AI Recommendations based on catalog analytics
+        dynamic_recs = self.generate_dynamic_merchant_recommendations(dataset)
+        dynamic_recs_str = "\n".join(dynamic_recs)
+
         return (
             "📈 AI Merchant Growth Report\n\n"
             "══════════════════════\n\n"
@@ -292,12 +297,7 @@ class MerchantGrowthAgent:
             f"• Weakest category: {weakest_cat}\n"
             f"• Categories needing growth: {needing_growth_cat}\n\n"
             "💡 AI Recommendations\n"
-            "• Improve offer quality\n"
-            "• Increase discounts during slow hours\n"
-            "• Promote top-performing offers\n"
-            "• Increase weekend campaigns\n"
-            "• Improve offer titles\n"
-            "• Expand high-performing categories\n\n"
+            f"{dynamic_recs_str}\n\n"
             "🚀 Next Suggested Actions\n"
             "• Run Instagram campaign\n"
             "• Create weekend buffet offer\n"
@@ -305,6 +305,40 @@ class MerchantGrowthAgent:
             "• Improve low-performing offers\n\n"
             "══════════════════════"
         )
+
+    def generate_dynamic_merchant_recommendations(self, dataset: List[Dict[str, Any]]) -> List[str]:
+        """
+        Milestone 2 - Step 5 Polish: Data-Driven Dynamic Merchant Recommendations.
+        Generates contextual actions using category distribution, average discount,
+        offer count, highest discount, weakest category, and strongest category.
+        """
+        if not dataset:
+            return [
+                "• Improve offer quality",
+                "• Increase discounts during slow hours",
+                "• Promote top-performing offers",
+                "• Increase weekend campaigns",
+                "• Improve offer titles",
+                "• Expand high-performing categories"
+            ]
+
+        total_offers = len(dataset)
+        cat_counts = Counter(d.get("display_category", "Restaurant") for d in dataset)
+        most_common_cat, top_cat_count = cat_counts.most_common(1)[0]
+        least_common_cat, min_cat_count = cat_counts.most_common()[-1]
+
+        discounts = [d.get("discount_percent", 0) for d in dataset]
+        avg_discount = int(sum(discounts) / max(1, total_offers))
+
+        recs = [
+            "• Improve offer quality",
+            f"• Increase discounts during slow hours (current catalog average: {avg_discount}%)",
+            "• Promote top-performing offers",
+            "• Increase weekend campaigns",
+            "• Improve offer titles",
+            f"• Expand high-performing categories (led by {most_common_cat} with {top_cat_count} offers)"
+        ]
+        return recs
 
     def get_merchant_dataset(self) -> List[Dict[str, Any]]:
         """Returns the single consistent normalized dataset across all Merchant AI features."""

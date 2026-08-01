@@ -87,24 +87,50 @@ def is_corrupted_title(title: str) -> bool:
     return False
 
 
+def infer_deal_category(deal: Dict[str, Any], explicit_cat: Optional[str] = None) -> str:
+    """Infers valid category from deal fields (brand, title, description, tags, keywords) when category is Unknown."""
+    raw_cat = (explicit_cat or deal.get("category") or "").strip().title()
+    if raw_cat and raw_cat.lower() not in ["unknown", "experience", "none", "null", ""]:
+        return raw_cat
+
+    brand = (deal.get("brand") or "").strip()
+    title = (deal.get("title") or "").strip()
+    desc = (deal.get("description") or "").strip()
+    tags = " ".join([str(t) for t in (deal.get("tags") or [])])
+    keywords = " ".join([str(k) for k in (deal.get("keywords") or [])])
+
+    text = f"{brand} {title} {desc} {tags} {keywords}".lower()
+
+    if any(k in text for k in ["cafe", "coffee", "bakery", "tea", "cake", "dessert"]):
+        return "Cafe"
+    if any(k in text for k in ["pizza", "burger", "bistro", "restrobar", "kitchen", "dining", "buffet", "food", "lunch", "dinner", "restaurant", "barbeque", "grill", "thali", "biryani", "cuisine", "air", "lounge", "bottle", "drink", "pub", "bar", "cocktail", "mocktail", "meal", "course"]):
+        return "Restaurant"
+    if any(k in text for k in ["hair", "haircut", "facial", "salon", "beauty", "makeup", "grooming", "waxing", "manicure", "pedicure", "nail", "academy", "unisex"]):
+        return "Salon"
+    if any(k in text for k in ["spa", "massage", "therapy", "wellness", "body massage", "swedish"]):
+        return "Spa"
+    if any(k in text for k in ["hotel", "resort", "stay", "room", "suite", "inn"]):
+        return "Hotel"
+
+    return "Restaurant"  # Clean fallback default for catalog deals
+
+
 def get_clean_title_fallback(category: str) -> str:
     """Returns clean category fallback title for corrupted offer titles."""
     c = (category or "").lower()
     if "buffet" in c:
         return "Special Buffet Offer"
-    if any(k in c for k in ["restaurant", "dining", "food"]):
+    if any(k in c for k in ["restaurant", "dining", "food", "eatery", "bistro", "restrobar"]):
         return "Special Dining Offer"
-    if any(k in c for k in ["spa", "massage", "wellness"]):
-        return "Premium Spa Experience"
-    if any(k in c for k in ["salon", "hair", "beauty"]):
-        return "Beauty & Grooming Offer"
+    if any(k in c for k in ["salon", "hair", "beauty", "cut", "styling"]):
+        return "Special Salon Offer"
+    if any(k in c for k in ["spa", "massage", "wellness", "therapy"]):
+        return "Special Spa Offer"
+    if any(k in c for k in ["cafe", "coffee", "bakery"]):
+        return "Special Cafe Offer"
     if any(k in c for k in ["hotel", "resort", "stay"]):
-        return "Hotel Experience"
-    if any(k in c for k in ["cafe", "coffee"]):
-        return "Cafe Special"
-    if any(k in c for k in ["entertainment", "gaming", "activity"]):
-        return "Entertainment Offer"
-    return "Special Catalog Offer"
+        return "Special Hotel Offer"
+    return "Special Dining Offer"
 
 
 def clean_offer_title(title: str, category: str = "") -> str:
@@ -366,7 +392,7 @@ def normalize_deal(deal: Dict[str, Any], category: Optional[str] = None, locatio
         raw_loc = deal.get("location") or "Mumbai"
 
     cleaned_loc = clean_location_string(raw_loc)
-    cat = deal.get("category") or category or "Experience"
+    cat = infer_deal_category(deal, category)
 
     # Validate Price
     raw_price = deal.get("price")
