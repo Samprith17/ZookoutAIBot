@@ -110,11 +110,12 @@ def get_clean_title_fallback(category: str) -> str:
 def clean_offer_title(title: str, category: str = "") -> str:
     """
     Milestone 1 Final Production Title Cleaning Engine V5:
+    - Detects catalog placeholders like 'Restaurant Offline', 'Cafe Offline' and converts directly to category fallback.
     - Detects OCR artifact junk (Llb, Ianncj, A(At, Trthhe, Awto) and converts to category fallback.
     - Never removes valid numeric prefixes (8 Inch Pizza, 2Nd Buffet On Us, 1+1 Buffet, 50% Off).
     - Preserves valid offer titles and extracts readable offer phrases from OCR strings.
     """
-    if not title or len(title.strip()) < 3:
+    if not title or len(title.strip()) < 3 or is_placeholder_title(title):
         return get_clean_title_fallback(category)
 
     t = title.strip()
@@ -305,6 +306,57 @@ def extract_discount_percent(deal: Dict[str, Any]) -> int:
     return 0
 
 
+FALLBACK_TITLES = [
+    "Special Buffet Offer", "Special Dining Offer", "Premium Spa Experience",
+    "Beauty & Grooming Offer", "Hotel Experience", "Cafe Special",
+    "Entertainment Offer", "Special Catalog Offer"
+]
+
+
+def is_placeholder_title(t: str) -> bool:
+    """Detects catalog placeholders like 'Restaurant Offline', 'Cafe Offline', 'Salon Offline', 'Spa Offline', 'Hotel Offline'."""
+    if not t or len(t.strip()) < 3:
+        return True
+    t_lower = t.strip().lower()
+
+    if any(k in t_lower for k in ["offline", "test brand", "anot wr e st"]):
+        return True
+
+    if re.match(r"^(?:restaurant|cafe|salon|spa|hotel|waterpark|activity)?\s*offline(?:\s+at\s+.*)?$", t_lower, re.IGNORECASE):
+        return True
+
+    if t_lower in ["60", "full", "(weekdays)", "30"]:
+        return True
+
+    return False
+
+
+def recover_title_from_deal(deal: Dict[str, Any]) -> str:
+    """Attempts to recover clean readable offer title from deal description or sub-phrases."""
+    cat = deal.get("category", "")
+    raw_t = deal.get("title", "")
+    desc = deal.get("description", "")
+
+    if not is_placeholder_title(raw_t):
+        cleaned_raw = clean_offer_title(raw_t, cat)
+        if cleaned_raw and not is_corrupted_title(cleaned_raw) and cleaned_raw not in FALLBACK_TITLES:
+            return cleaned_raw
+
+    if desc:
+        desc_parts = re.split(r"\s+[\-\–\—]\s+", desc)
+        for part in desc_parts[1:]:
+            part_clean = re.sub(r"^\d+\s+", "", part.strip())
+            sub_markers = [r"\s+At The Outlet", r"\s+On Zookout", r"Pmaays", r"Pwaithy", r"Praeyd", r"Ppareym", r"Psoafyte", r"Pflaawy", r"Pdrayy", r"Pmaeyn", r"Pblaeya"]
+            sub_parts = re.split("|".join(sub_markers), part_clean, flags=re.IGNORECASE)
+            candidate = sub_parts[0].strip()
+
+            c_title = clean_offer_title(candidate, cat)
+            if c_title and not is_placeholder_title(c_title) and not is_corrupted_title(c_title) and c_title not in FALLBACK_TITLES:
+                return c_title
+
+    return get_clean_title_fallback(cat)
+
+
 def normalize_deal(deal: Dict[str, Any], category: Optional[str] = None, location: Optional[str] = None) -> Dict[str, Any]:
     """Normalizes and validates deal fields with fallbacks and clean formatting."""
     deal_area = extract_deal_area(deal)
@@ -334,9 +386,14 @@ def normalize_deal(deal: Dict[str, Any], category: Optional[str] = None, locatio
     formatted_price = f"₹{int(price):,}" if price > 0 else "Price unavailable"
     savings = int(price * (disc / 100.0)) if price > 0 and disc > 0 else 0
 
-    # Validate Clean Title
+    # Validate Clean Title (with Description Recovery for Placeholders)
     raw_title = deal.get("clean_title") or deal.get("title") or ""
     clean_title = clean_offer_title(raw_title, cat)
+
+    if is_placeholder_title(clean_title) or clean_title in FALLBACK_TITLES or is_corrupted_title(clean_title):
+        recovered = recover_title_from_deal(deal)
+        if recovered and not is_placeholder_title(recovered) and not is_corrupted_title(recovered):
+            clean_title = recovered
 
     # Validate Brand Name
     brand = (deal.get("brand") or "").strip()
