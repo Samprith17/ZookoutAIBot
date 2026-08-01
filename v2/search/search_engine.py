@@ -118,13 +118,18 @@ def clean_offer_title(title: str, category: str = "") -> str:
     t = re.sub(r"^\d{3,}\s+(?=[A-Za-z])", "", t)
     t = re.sub(r"^\d+\s+[A-Za-z]\(", "", t)
     t = re.sub(r"^[₹\d]{3,}(?=[A-Z][a-z])", "", t)
+    t = re.sub(r"\s+Pchaoyi\s*.*$", "", t, flags=re.IGNORECASE)
 
     # 1. If entire title is clean and valid, return it normalized
     if not is_corrupted_title(t):
         sub_parts = re.split(r"[\.\:\;\n\|]", t)
         if sub_parts and len(sub_parts[0].strip()) >= 5 and not is_corrupted_title(sub_parts[0]):
-            return re.sub(r"\s+", " ", sub_parts[0]).strip()
-        return re.sub(r"\s+", " ", t).strip()
+            res = re.sub(r"\s+", " ", sub_parts[0]).strip()
+            if not re.match(r"^\d+\s+At\b", res, re.IGNORECASE):
+                return res
+        res = re.sub(r"\s+", " ", t).strip()
+        if not re.match(r"^\d+\s+At\b", res, re.IGNORECASE):
+            return res
 
     # 2. Look for clean readable sub-phrases split by '.', 'At The Outlet', 'On Zookout', or OCR markers
     split_patterns = [
@@ -403,8 +408,20 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     # 5. Popularity / Confidence Score (10%)
     pop_score = min(10.0, confidence * 10.0)
 
-    # 6. Offer Quality Score (5%)
-    quality_score = 5.0 if (disc > 0 and len(clean_t) > 5) else 2.5
+    # 6. Offer Quality & Real Catalog Title Priority Bonus
+    fallback_titles = [
+        "Special Buffet Offer", "Special Dining Offer", "Premium Spa Experience",
+        "Beauty & Grooming Offer", "Hotel Experience", "Cafe Special",
+        "Entertainment Offer", "Special Catalog Offer"
+    ]
+    is_real_title = clean_t not in fallback_titles and len(clean_t) >= 5
+
+    if is_real_title:
+        quality_score = 25.0  # Priority bonus for genuine readable catalog offer titles!
+    elif disc > 0:
+        quality_score = 5.0
+    else:
+        quality_score = 2.5
 
     # Final Weighted Sum
     total_score = loc_score + budget_score + disc_score + rating_score + pop_score + quality_score
