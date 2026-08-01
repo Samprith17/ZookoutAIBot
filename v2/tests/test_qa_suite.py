@@ -227,7 +227,7 @@ def run_qa_suite():
         },
         {
             "query": "Category Analytics",
-            "expected_intents": ["analytics_category"],
+            "expected_intents": ["analytics_category", "merchant_analytics_report"],
             "is_merchant": True,
             "category": "Business Intelligence",
             "reason": "Verify Category performance analytics breakdown"

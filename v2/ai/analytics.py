@@ -2,7 +2,7 @@ import logging
 import statistics
 from typing import Dict, List, Any
 from collections import Counter
-from v2.search.search_engine import normalize_deal
+from v2.search.search_engine import normalize_deal, is_corrupted_title, is_placeholder_title, recover_title_from_deal
 from v2.ai.merchant import merchant_agent
 
 logger = logging.getLogger(__name__)
@@ -10,10 +10,147 @@ logger = logging.getLogger(__name__)
 
 class BusinessAnalyticsEngine:
     """
-    Business Intelligence & Analytics Engine (10/10 Location Consistency):
+    Business Intelligence & Analytics Engine:
     - Strict Data Rule: Uses strictly normalized catalog data; never invents revenue, profit, bookings, CTR, or sales.
     - Dynamic Location Parsing: Reports Cities & Areas dynamically from normalized dataset locations.
     """
+
+    def generate_merchant_analytics_report(self) -> str:
+        """
+        Milestone 2 - Step 4: AI Merchant Analytics Report.
+        Calculates catalog analytics grouped by category and merchant,
+        highlighting top categories, top merchants, highest rated offers,
+        business insights (strongest/weakest/growth opportunities/needing offers),
+        and AI recommendations.
+        """
+        dataset = self.get_dataset()
+        total_offers = len(dataset)
+
+        if not dataset:
+            return (
+                "📊 Merchant Analytics Report\n\n"
+                "• Total offers: 0\n\n"
+                "• Business insights:\n"
+                "  - Strongest category: None\n"
+                "  - Weakest category: None\n"
+                "  - Growth opportunities: Add initial merchant catalog listings.\n"
+                "  - Categories needing more offers: Restaurant, Spa, Salon, Cafe, Hotel\n\n"
+                "• AI recommendations:\n"
+                "  - Increase offers in underperforming categories.\n"
+                "  - Improve discounts where appropriate.\n"
+                "  - Promote top-performing merchants.\n"
+                "  - Expand high-demand categories."
+            )
+
+        # Category Grouping
+        cat_map: Dict[str, List[Dict[str, Any]]] = {}
+        for d in dataset:
+            cat = d.get("display_category") or d.get("category") or "Experience"
+            if cat not in cat_map:
+                cat_map[cat] = []
+            cat_map[cat].append(d)
+
+        cat_stats = []
+        for cat, deals in cat_map.items():
+            count = len(deals)
+            priced = [float(str(d.get("price", "0")).replace(",", "")) for d in deals if float(str(d.get("price", "0")).replace(",", "")) > 0]
+            avg_price = int(sum(priced) / max(1, len(priced))) if priced else 0
+            discounts = [d.get("discount_percent", 0) for d in deals]
+            avg_disc = int(sum(discounts) / max(1, count))
+            max_disc = max(discounts) if discounts else 0
+            scores = [merchant_agent.evaluate_offer_score(d)["total_score"] for d in deals]
+            avg_score = int(sum(scores) / max(1, count))
+            cat_stats.append({
+                "cat": cat,
+                "count": count,
+                "avg_price": avg_price,
+                "avg_disc": avg_disc,
+                "max_disc": max_disc,
+                "avg_score": avg_score
+            })
+
+        sorted_by_count = sorted(cat_stats, key=lambda x: x["count"], reverse=True)
+        sorted_by_score = sorted(cat_stats, key=lambda x: x["avg_score"], reverse=True)
+
+        top_5_cats = sorted_by_count[:5]
+        strongest_cat = sorted_by_score[0]["cat"] if sorted_by_score else "Restaurant"
+        weakest_cat = sorted_by_score[-1]["cat"] if sorted_by_score else "Salon"
+        needing_offers_cat = sorted_by_count[-1]["cat"] if sorted_by_count else "Cafe"
+
+        # Merchant Grouping
+        merchant_map: Dict[str, List[Dict[str, Any]]] = {}
+        for d in dataset:
+            brand = d.get("brand") or "Merchant"
+            if brand not in merchant_map:
+                merchant_map[brand] = []
+            merchant_map[brand].append(d)
+
+        merchant_stats = sorted(
+            [{"brand": b, "count": len(deals)} for b, deals in merchant_map.items()],
+            key=lambda x: x["count"],
+            reverse=True
+        )
+        top_5_merchants = merchant_stats[:5]
+
+        # Highest Rated Offers (using safe title formatting)
+        evaluated = [(d, merchant_agent.evaluate_offer_score(d)) for d in dataset]
+        evaluated_sorted = sorted(evaluated, key=lambda x: x[1]["total_score"], reverse=True)
+
+        def format_safe_title(deal: Dict[str, Any]) -> str:
+            raw_t = deal.get("title", "")
+            clean_t = deal.get("clean_title") or raw_t
+            if is_placeholder_title(clean_t) or is_corrupted_title(clean_t) or len(clean_t.strip()) < 5:
+                recovered = recover_title_from_deal(deal)
+                if recovered and not is_placeholder_title(recovered) and not is_corrupted_title(recovered) and len(recovered.strip()) >= 5:
+                    return recovered
+                return "Special Offer"
+            return clean_t
+
+        top_rated_offers = []
+        for i, (d, eval_s) in enumerate(evaluated_sorted[:3], 1):
+            t = format_safe_title(d)
+            b = d.get("brand", "Merchant")
+            s = eval_s["total_score"]
+            top_rated_offers.append(f"  {i}. {b} - {t} (Score: {s}/100)")
+
+        # Format Sections
+        offers_by_cat_str = "\n".join([f"  - {c['cat']}: {c['count']} offers" for c in top_5_cats])
+        avg_disc_by_cat_str = "\n".join([f"  - {c['cat']}: {c['avg_disc']}%" for c in top_5_cats])
+        max_disc_by_cat_str = "\n".join([f"  - {c['cat']}: {c['max_disc']}%" for c in top_5_cats])
+        avg_price_by_cat_str = "\n".join([f"  - {c['cat']}: ₹{c['avg_price']:,}" for c in top_5_cats])
+
+        top_5_cats_str = "\n".join([f"  {i}. {c['cat']} ({c['count']} offers)" for i, c in enumerate(top_5_cats, 1)])
+        top_5_merchants_str = "\n".join([f"  {i}. {m['brand']} ({m['count']} offers)" for i, m in enumerate(top_5_merchants, 1)])
+        top_rated_offers_str = "\n".join(top_rated_offers)
+
+        return (
+            "📊 Merchant Analytics Report\n\n"
+            f"• Total offers: {total_offers}\n\n"
+            "• Offers by category:\n"
+            f"{offers_by_cat_str}\n\n"
+            "• Average discount by category:\n"
+            f"{avg_disc_by_cat_str}\n\n"
+            "• Highest discount by category:\n"
+            f"{max_disc_by_cat_str}\n\n"
+            "• Average price by category:\n"
+            f"{avg_price_by_cat_str}\n\n"
+            "• Top 5 categories:\n"
+            f"{top_5_cats_str}\n\n"
+            "• Top 5 merchants:\n"
+            f"{top_5_merchants_str}\n\n"
+            "• Highest rated offers:\n"
+            f"{top_rated_offers_str}\n\n"
+            "• Business insights:\n"
+            f"  - Strongest category: {strongest_cat}\n"
+            f"  - Weakest category: {weakest_cat}\n"
+            "  - Growth opportunities: Expand off-peak deals and combo packages in top categories.\n"
+            f"  - Categories needing more offers: {needing_offers_cat}\n\n"
+            "• AI recommendations:\n"
+            "  - Increase offers in underperforming categories.\n"
+            "  - Improve discounts where appropriate.\n"
+            "  - Promote top-performing merchants.\n"
+            "  - Expand high-demand categories."
+        )
 
     def get_dataset(self) -> List[Dict[str, Any]]:
         """Retrieves normalized merchant dataset."""

@@ -827,6 +827,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Milestone 13 & Milestone 2 Merchant Router Interception
         if raw_intent.get("is_merchant") or raw_intent["type"].startswith("merchant_"):
+            if raw_intent["type"] == "merchant_analytics_report":
+                await update.message.reply_text(analytics_engine.generate_merchant_analytics_report())
+                return
             if raw_intent["type"] == "merchant_offer_recommendations":
                 await update.message.reply_text(merchant_agent.generate_ai_offer_recommendation_report())
                 return
@@ -1119,7 +1122,11 @@ def main():
     app.add_handler(CommandHandler("peak_hours", lambda u, c: u.message.reply_text(merchant_agent.generate_slow_hours_performance_report())))
     app.add_handler(CommandHandler("business_analysis", lambda u, c: u.message.reply_text(merchant_agent.generate_slow_hours_performance_report())))
     app.add_handler(CommandHandler("sales_prediction", lambda u, c: u.message.reply_text(merchant_agent.generate_slow_hours_performance_report())))
-    app.add_handler(CommandHandler("merchant_analytics", lambda u, c: u.message.reply_text(merchant_agent.generate_slow_hours_performance_report())))
+    app.add_handler(CommandHandler("merchant_analytics", lambda u, c: u.message.reply_text(analytics_engine.generate_merchant_analytics_report())))
+    app.add_handler(CommandHandler("category_analytics", lambda u, c: u.message.reply_text(analytics_engine.generate_merchant_analytics_report())))
+    app.add_handler(CommandHandler("sales_analytics", lambda u, c: u.message.reply_text(analytics_engine.generate_merchant_analytics_report())))
+    app.add_handler(CommandHandler("offer_analytics", lambda u, c: u.message.reply_text(analytics_engine.generate_merchant_analytics_report())))
+    app.add_handler(CommandHandler("analytics_report", lambda u, c: u.message.reply_text(analytics_engine.generate_merchant_analytics_report())))
     app.add_handler(CommandHandler("recommend_offers", lambda u, c: u.message.reply_text(merchant_agent.generate_ai_offer_recommendation_report())))
     app.add_handler(CommandHandler("best_offer", lambda u, c: u.message.reply_text(merchant_agent.generate_ai_offer_recommendation_report())))
     app.add_handler(CommandHandler("offer_suggestions", lambda u, c: u.message.reply_text(merchant_agent.generate_ai_offer_recommendation_report())))

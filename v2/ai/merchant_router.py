@@ -9,6 +9,14 @@ from typing import Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 MERCHANT_ROUTES = {
+    # Milestone 2 Step 4 Merchant Analytics Report Routes
+    "merchant_analytics_report": [
+        "merchant analytics", "category analytics", "sales analytics",
+        "offer analytics", "analytics report", "/merchant_analytics",
+        "/category_analytics", "/sales_analytics", "/offer_analytics",
+        "/analytics_report"
+    ],
+
     # Milestone 2 Step 3 Merchant AI Offer Recommendation Routes
     "merchant_offer_recommendations": [
         "recommend offers", "best offer", "offer suggestions",
