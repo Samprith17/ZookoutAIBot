@@ -169,7 +169,7 @@ class MerchantGrowthAgent:
             loc_score = 5
 
         # 6. OCR Quality (/15)
-        if clean_offer_title(deal) == raw_title:
+        if clean_offer_title(raw_title, cat) == raw_title:
             ocr_score = 15
         elif "Offer" in title or len(title) >= 8:
             ocr_score = 11
@@ -188,7 +188,7 @@ class MerchantGrowthAgent:
         if price > 0:
             strengths.append("✓ Known price")
 
-        if clean_offer_title(deal) == raw_title:
+        if clean_offer_title(raw_title, cat) == raw_title:
             strengths.append("✓ Clean title")
 
         if loc_score == 10:
@@ -208,7 +208,7 @@ class MerchantGrowthAgent:
         if price == 0:
             suggestions.append("Display explicit pricing on listing card.")
 
-        if clean_offer_title(deal) != raw_title:
+        if clean_offer_title(raw_title, cat) != raw_title:
             suggestions.append("Clean OCR text artifacts in title.")
 
         if not loc or loc.lower() in ["none", "location unavailable", ""]:

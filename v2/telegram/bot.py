@@ -206,8 +206,7 @@ async def merchant_improve_handler(update: Update, context: ContextTypes.DEFAULT
 
 
 async def merchant_dashboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id if update.effective_user else update.effective_chat.id
-    dash_text = merchant_agent.merchant_dashboard(user_id)
+    dash_text = merchant_agent.generate_merchant_growth_report()
     await update.message.reply_text(dash_text)
 
 
@@ -1106,11 +1105,14 @@ def main():
     app.add_handler(CommandHandler("growth", merchant_growth_handler))
     app.add_handler(CommandHandler("improve_desc", merchant_improve_handler))
     app.add_handler(CommandHandler("merchant_dashboard", merchant_dashboard_handler))
+    app.add_handler(CommandHandler("business_dashboard", merchant_dashboard_handler))
+    app.add_handler(CommandHandler("merchant_insights", merchant_dashboard_handler))
+    app.add_handler(CommandHandler("growth_report", merchant_dashboard_handler))
+    app.add_handler(CommandHandler("business_report", merchant_dashboard_handler))
     app.add_handler(CommandHandler("offer_health", merchant_health_handler))
     app.add_handler(CommandHandler("compare_offers", merchant_compare_handler))
     app.add_handler(CommandHandler("promote", merchant_promote_handler))
     app.add_handler(CommandHandler("merchant_help", merchant_help_handler))
-    app.add_handler(CommandHandler("business_dashboard", lambda u, c: u.message.reply_text(analytics_engine.generate_business_dashboard())))
     app.add_handler(CommandHandler("catalog_summary", lambda u, c: u.message.reply_text(analytics_engine.generate_catalog_summary())))
     app.add_handler(CommandHandler("category_analytics", lambda u, c: u.message.reply_text(analytics_engine.generate_category_analytics())))
     app.add_handler(CommandHandler("brand_analytics", lambda u, c: u.message.reply_text(analytics_engine.generate_brand_analytics())))

@@ -9,12 +9,13 @@ from typing import Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 MERCHANT_ROUTES = {
-    # Milestone 2 Merchant Growth Agent Routes
+    # Milestone 2 Merchant Growth Agent Routes (Unified Dashboard)
     "merchant_growth_report": [
         "merchant dashboard", "business dashboard", "merchant insights",
         "growth report", "business report", "merchant growth report",
         "merchant report", "my merchant dashboard", "my business dashboard",
-        "bi dashboard", "/merchant_dashboard", "/business_dashboard", "/growth_report"
+        "bi dashboard", "/merchant_dashboard", "/business_dashboard",
+        "/merchant_insights", "/growth_report", "/business_report"
     ],
 
     # Milestone 15 Business Intelligence & Analytics Routes (High Priority)
