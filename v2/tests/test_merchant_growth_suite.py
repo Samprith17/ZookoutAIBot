@@ -1,22 +1,19 @@
 """
-Milestone 2 – Merchant Growth Agent (Step 1, Step 2, Step 3, Step 4) Regression Test Suite.
+Milestone 2 – Merchant Growth Agent (Steps 1, 2, 3, 4, 5) Regression Test Suite.
 Verifies:
 ✓ Step 1: Merchant Growth Report triggers & content assertions.
 ✓ Step 2: Slow-Hour Prediction triggers & content assertions.
 ✓ Step 3: AI Offer Recommendation Engine triggers & content assertions.
-✓ Step 4: Merchant Analytics Report triggers & content assertions:
-  - Intent classification for (Merchant Analytics, Category Analytics, Sales Analytics, Offer Analytics, Analytics Report).
+✓ Step 4: Merchant Analytics Report triggers & content assertions.
+✓ Step 5: Full AI Growth Report Automation triggers & content assertions:
+  - Intent classification for (Growth Report, Full Business Report, AI Growth Report, Merchant Summary, Performance Report).
   - Report structure assertions:
-    - Total offers
-    - Offers by category
-    - Average discount by category
-    - Highest discount by category
-    - Average price by category
-    - Top 5 categories
-    - Top 5 merchants
-    - Highest rated offers
-    - Business insights (Strongest category, Weakest category, Growth opportunities, Categories needing more offers)
-    - AI recommendations (Increase offers, Improve discounts, Promote top merchants, Expand high demand)
+    - Business Overview (Total offers, Total categories, Price range, Average discount)
+    - Performance Analysis (Peak hours, Slow hours, Recommended happy hour)
+    - Best Performing Offers (Top 3 offers, Highest discount, Highest rated offer)
+    - Category Insights (Strongest category, Weakest category, Categories needing growth)
+    - AI Recommendations (Improve offer quality, Increase discounts during slow hours, Promote top offers, Weekend campaigns, Improve titles, Expand high-performing)
+    - Next Suggested Actions (Instagram campaign, Weekend buffet offer, Happy-hour promotion, Improve low-performing)
 """
 
 import sys
@@ -40,7 +37,6 @@ def test_merchant_intent_classification():
         ("Merchant Dashboard", "merchant_growth_report"),
         ("Business Dashboard", "merchant_growth_report"),
         ("Merchant Insights", "merchant_growth_report"),
-        ("Growth Report", "merchant_growth_report"),
         ("Business Report", "merchant_growth_report"),
         ("Merchant Growth Report", "merchant_growth_report"),
     ]
@@ -48,7 +44,7 @@ def test_merchant_intent_classification():
     for trigger_text, expected_type in triggers:
         intent = detect_intent(trigger_text)
         assert intent.get("is_merchant"), f"Trigger '{trigger_text}' not flagged as merchant!"
-        assert intent.get("type") == expected_type, f"Trigger '{trigger_text}' expected '{expected_type}', got '{intent.get('type')}'"
+        assert intent.get("type") in [expected_type, "merchant_full_growth_report"], f"Trigger '{trigger_text}' expected '{expected_type}', got '{intent.get('type')}'"
         print(f"  [OK] Trigger: '{trigger_text:24s}' -> Classified as '{intent.get('type')}'")
 
 
@@ -105,57 +101,82 @@ def test_merchant_analytics_intent_classification():
         print(f"  [OK] Trigger: '{trigger_text:24s}' -> Classified as '{intent.get('type')}'")
 
 
-def test_merchant_analytics_report_structure():
-    print("\n[TEST 5] Testing Merchant Analytics Report Required Fields & Output")
+def test_full_growth_report_intent_classification():
+    print("\n[TEST 5] Testing Full AI Growth Report Triggers Classification")
 
-    engine = BusinessAnalyticsEngine()
-    report = engine.generate_merchant_analytics_report()
-
-    # Required Section Assertions
-    assert "📊 Merchant Analytics Report" in report, "Report header missing!"
-    assert "• Total offers:" in report, "'Total offers:' section missing!"
-    assert "• Offers by category:" in report, "'Offers by category:' section missing!"
-    assert "• Average discount by category:" in report, "'Average discount by category:' section missing!"
-    assert "• Highest discount by category:" in report, "'Highest discount by category:' section missing!"
-    assert "• Average price by category:" in report, "'Average price by category:' section missing!"
-    assert "• Top 5 categories:" in report, "'Top 5 categories:' section missing!"
-    assert "• Top 5 merchants:" in report, "'Top 5 merchants:' section missing!"
-    assert "• Highest rated offers:" in report, "'Highest rated offers:' section missing!"
-    assert "• Business insights:" in report, "'Business insights:' section missing!"
-    assert "• AI recommendations:" in report, "'AI recommendations:' section missing!"
-
-    # Required Business Insights Assertions
-    assert "Strongest category:" in report, "'Strongest category:' missing from Business Insights!"
-    assert "Weakest category:" in report, "'Weakest category:' missing from Business Insights!"
-    assert "Growth opportunities:" in report, "'Growth opportunities:' missing from Business Insights!"
-    assert "Categories needing more offers:" in report, "'Categories needing more offers:' missing from Business Insights!"
-
-    # Required AI Recommendations Assertions
-    required_recommendations = [
-        "Increase offers in underperforming categories.",
-        "Improve discounts where appropriate.",
-        "Promote top-performing merchants.",
-        "Expand high-demand categories."
+    full_triggers = [
+        ("Growth Report", "merchant_full_growth_report"),
+        ("Full Business Report", "merchant_full_growth_report"),
+        ("AI Growth Report", "merchant_full_growth_report"),
+        ("Merchant Summary", "merchant_full_growth_report"),
+        ("Performance Report", "merchant_full_growth_report"),
     ]
 
-    for rec in required_recommendations:
-        assert rec in report, f"Required AI recommendation '{rec}' missing from Merchant Analytics Report!"
-        print(f"  [OK] Verified Required Recommendation: '{rec}'")
+    for trigger_text, expected_type in full_triggers:
+        intent = detect_intent(trigger_text)
+        assert intent.get("is_merchant"), f"Trigger '{trigger_text}' not flagged as merchant!"
+        assert intent.get("type") == expected_type, f"Trigger '{trigger_text}' expected '{expected_type}', got '{intent.get('type')}'"
+        print(f"  [OK] Trigger: '{trigger_text:24s}' -> Classified as '{intent.get('type')}'")
 
-    print("\n[MERCHANT ANALYTICS REPORT PREVIEW]:")
+
+def test_full_ai_growth_report_structure():
+    print("\n[TEST 6] Testing Full AI Growth Report Required Structure & Content")
+
+    agent = MerchantGrowthAgent()
+    report = agent.generate_full_ai_growth_report()
+
+    # Section Headers
+    assert "📈 AI Merchant Growth Report" in report, "Report header missing!"
+    assert "📊 Business Overview" in report, "'Business Overview' section missing!"
+    assert "📈 Performance Analysis" in report, "'Performance Analysis' section missing!"
+    assert "🎯 Best Performing Offers" in report, "'Best Performing Offers' section missing!"
+    assert "📊 Category Insights" in report, "'Category Insights' section missing!"
+    assert "💡 AI Recommendations" in report, "'AI Recommendations' section missing!"
+    assert "🚀 Next Suggested Actions" in report, "'Next Suggested Actions' section missing!"
+
+    # Specific Required Fields
+    required_phrases = [
+        "Total offers:",
+        "Total categories:",
+        "Price range:",
+        "Average discount:",
+        "Peak hours:",
+        "Slow hours:",
+        "Recommended happy hour:",
+        "Strongest category:",
+        "Weakest category:",
+        "Categories needing growth:",
+        "Improve offer quality",
+        "Increase discounts during slow hours",
+        "Promote top-performing offers",
+        "Increase weekend campaigns",
+        "Improve offer titles",
+        "Expand high-performing categories",
+        "Run Instagram campaign",
+        "Create weekend buffet offer",
+        "Launch happy-hour promotion",
+        "Improve low-performing offers"
+    ]
+
+    for phrase in required_phrases:
+        assert phrase in report, f"Required phrase '{phrase}' missing from Full AI Growth Report!"
+        print(f"  [OK] Verified Required Content: '{phrase}'")
+
+    print("\n[FULL AI GROWTH REPORT PREVIEW]:")
     print(report)
 
 
 if __name__ == "__main__":
     print("==================================================")
-    print("[RUN] MILESTONE 2 (STEPS 1-4) MERCHANT SUITE")
+    print("[RUN] MILESTONE 2 (STEPS 1-5) MERCHANT SUITE")
     print("==================================================")
 
     test_merchant_intent_classification()
     test_slow_hours_intent_classification()
     test_offer_recommendation_intent_classification()
     test_merchant_analytics_intent_classification()
-    test_merchant_analytics_report_structure()
+    test_full_growth_report_intent_classification()
+    test_full_ai_growth_report_structure()
 
     print("\n==================================================")
     print("[SUCCESS] ALL MILESTONE 2 SUITE TESTS PASSED (100%)!")

@@ -197,6 +197,108 @@ class MerchantGrowthAgent:
             "• Rotate promotions weekly."
         )
 
+    def generate_full_ai_growth_report(self) -> str:
+        """
+        Milestone 2 - Step 5: Comprehensive AI Growth Report Automation.
+        Combines Merchant Dashboard, Analytics, Offer Recommendations, and Slow-Hour Performance into a single unified report.
+        Reuses existing underlying logic without code duplication.
+        """
+        dataset = self.get_merchant_dataset()
+        total_offers = len(dataset)
+
+        priced_deals = [d for d in dataset if float(str(d.get("price", "0")).replace(",", "")) > 0]
+        prices = [float(str(d.get("price", "0")).replace(",", "")) for d in priced_deals] if priced_deals else [0.0]
+        min_price = int(min(prices))
+        max_price = int(max(prices))
+
+        avg_discount = int(sum(d.get("discount_percent", 0) for d in dataset) / max(1, total_offers))
+        categories = sorted(list({d.get("display_category") for d in dataset if d.get("display_category")}))
+        cat_count = len(categories)
+
+        # Best Performing Offers (Top 3)
+        evaluated = [(d, self.evaluate_offer_score(d)) for d in dataset]
+        evaluated_sorted = sorted(evaluated, key=lambda x: x[1]["total_score"], reverse=True)
+
+        def format_safe_title(deal: Dict[str, Any]) -> str:
+            raw_t = deal.get("title", "")
+            clean_t = deal.get("clean_title") or raw_t
+            if is_placeholder_title(clean_t) or is_corrupted_title(clean_t) or len(clean_t.strip()) < 5:
+                recovered = recover_title_from_deal(deal)
+                if recovered and not is_placeholder_title(recovered) and not is_corrupted_title(recovered) and len(recovered.strip()) >= 5:
+                    return f"{recovered} ({deal.get('brand', 'Merchant')})"
+                return f"Special Offer ({deal.get('brand', 'Merchant')})"
+            return f"{clean_t} ({deal.get('brand', 'Merchant')})"
+
+        top_3_offers = []
+        for i, (d, eval_s) in enumerate(evaluated_sorted[:3], 1):
+            top_3_offers.append(f"• {format_safe_title(d)}")
+        top_3_str = "\n".join(top_3_offers)
+
+        # Highest Discount Offer
+        highest_disc_deal = max(dataset, key=lambda x: x.get("discount_percent", 0), default=dataset[0])
+        highest_disc_str = f"• Highest discount: {highest_disc_deal.get('discount_percent')}% OFF {format_safe_title(highest_disc_deal)}"
+
+        # Highest Rated Offer
+        highest_rated_deal, highest_eval = evaluated_sorted[0]
+        highest_rated_str = f"• Highest rated offer: {format_safe_title(highest_rated_deal)} (Score: {highest_eval['total_score']}/100)"
+
+        # Category Insights
+        cat_map: Dict[str, List[Dict[str, Any]]] = {}
+        for d in dataset:
+            cat = d.get("display_category") or d.get("category") or "Experience"
+            if cat not in cat_map:
+                cat_map[cat] = []
+            cat_map[cat].append(d)
+
+        cat_stats = []
+        for cat, deals in cat_map.items():
+            count = len(deals)
+            scores = [self.evaluate_offer_score(d)["total_score"] for d in deals]
+            avg_score = int(sum(scores) / max(1, count))
+            cat_stats.append({"cat": cat, "count": count, "avg_score": avg_score})
+
+        sorted_by_count = sorted(cat_stats, key=lambda x: x["count"], reverse=True)
+        sorted_by_score = sorted(cat_stats, key=lambda x: x["avg_score"], reverse=True)
+
+        strongest_cat = sorted_by_score[0]["cat"] if sorted_by_score else "Restaurant"
+        weakest_cat = sorted_by_score[-1]["cat"] if sorted_by_score else "Salon"
+        needing_growth_cat = sorted_by_count[-1]["cat"] if sorted_by_count else "Cafe"
+
+        return (
+            "📈 AI Merchant Growth Report\n\n"
+            "══════════════════════\n\n"
+            "📊 Business Overview\n"
+            f"• Total offers: {total_offers}\n"
+            f"• Total categories: {cat_count}\n"
+            f"• Price range: ₹{min_price:,} - ₹{max_price:,}\n"
+            f"• Average discount: {avg_discount}%\n\n"
+            "📈 Performance Analysis\n"
+            "• Peak hours: 7 PM – 10 PM\n"
+            "• Slow hours: 2 PM – 5 PM\n"
+            "• Recommended happy hour: 3 PM – 6 PM\n\n"
+            "🎯 Best Performing Offers\n"
+            f"{top_3_str}\n"
+            f"{highest_disc_str}\n"
+            f"{highest_rated_str}\n\n"
+            "📊 Category Insights\n"
+            f"• Strongest category: {strongest_cat}\n"
+            f"• Weakest category: {weakest_cat}\n"
+            f"• Categories needing growth: {needing_growth_cat}\n\n"
+            "💡 AI Recommendations\n"
+            "• Improve offer quality\n"
+            "• Increase discounts during slow hours\n"
+            "• Promote top-performing offers\n"
+            "• Increase weekend campaigns\n"
+            "• Improve offer titles\n"
+            "• Expand high-performing categories\n\n"
+            "🚀 Next Suggested Actions\n"
+            "• Run Instagram campaign\n"
+            "• Create weekend buffet offer\n"
+            "• Launch happy-hour promotion\n"
+            "• Improve low-performing offers\n\n"
+            "══════════════════════"
+        )
+
     def get_merchant_dataset(self) -> List[Dict[str, Any]]:
         """Returns the single consistent normalized dataset across all Merchant AI features."""
         deals = load_deals()
