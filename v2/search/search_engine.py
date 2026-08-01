@@ -107,18 +107,21 @@ def get_clean_title_fallback(category: str) -> str:
 
 def clean_offer_title(title: str, category: str = "") -> str:
     """
-    Milestone 1 Production Title Cleaning & Deduplication Engine:
-    - Removes repeated brand/venue phrases ("Solitaire Kitchen & At Solitaire Kitchen &" -> "Solitaire Kitchen")
-    - Deduplicates consecutive duplicate words ("Solitaire Solitaire" -> "Solitaire")
-    - Strips leading catalog ID markers ("170 & Cappuccino" -> "Cappuccino")
-    - Strips trailing junk symbols (&, +, -, At, OCR noise markers)
-    - Preserves valid titles ("Executive Veg Lunch", "2nd Buffet On Us", "Flat 50% Off on Entire Menu")
-    - Assigns clean category fallback ONLY if title is unrecoverably corrupted or empty.
+    Milestone 1 Final Production Title Cleaning Engine V4:
+    - Never removes valid numeric prefixes (8 Inch Pizza, 2Nd Buffet On Us, 1+1 Buffet, 50% Off).
+    - Detects junk titles like '45 At', '127 At', '90 At', 'xx At', 'At &', 'At At' and replaces them with category fallback.
+    - Preserves valid offer titles and extracts readable offer phrases from OCR strings.
     """
     if not title or len(title.strip()) < 3:
         return get_clean_title_fallback(category)
 
     t = title.strip()
+
+    # Detect junk titles like '45 At', '127 At', '90 At', 'xx At', 'At &', 'At At', 'At Restrobar'
+    if re.match(r"^(?:\d+|\w+)?\s*At(?:\s+(?:&|\+|At|[A-Za-z0-9]+))?$", t, re.IGNORECASE):
+        return get_clean_title_fallback(category)
+    if re.match(r"^At\s+(?:&|\+|At)\s*$", t, re.IGNORECASE) or t.lower() in ["at &", "at at", "at"]:
+        return get_clean_title_fallback(category)
 
     # Explicit OCR garbage titles that must use clean fallback
     if "maineat" in t.lower() or t.lower().startswith("s +"):
@@ -132,11 +135,10 @@ def clean_offer_title(title: str, category: str = "") -> str:
     # 2. Deduplicate consecutive duplicate words (e.g., 'Solitaire Solitaire' -> 'Solitaire')
     t = re.sub(r"\b(\w+)(?:\s+\1)+\b", r"\1", t, flags=re.IGNORECASE)
 
-    # 3. Strip leading catalog IDs like '170 & ', '181 A(', '171 ' while keeping ordinals like '2nd Buffet On Us'
-    t = re.sub(r"^\d{3,}\s*(?:&|\+|\-)?\s*(?=[A-Za-z])", "", t)
-    t = re.sub(r"^\d+\s*&\s*", "", t)
-    t = re.sub(r"^\d+\s+[A-Za-z]\(", "", t)
-    t = re.sub(r"^[₹\d]{3,}(?=[A-Z][a-z])", "", t)
+    # 3. Strip ONLY explicit catalog IDs like '170 & ', '181 A(' while PRESERVING valid measurements/counts like '8 Inch Pizza', '2nd Buffet On Us'
+    t = re.sub(r"^\d{3,}\s*(?:&|\+|\-)\s*(?=[A-Za-z])", "", t)
+    t = re.sub(r"^\d{3,}\s+[A-Za-z]\(", "", t)
+    t = re.sub(r"^\d+\s*&\s+(?=[A-Za-z])", "", t)
 
     # 4. Strip trailing OCR noise markers
     t = re.sub(r"\s+Pchaoyi\s*.*$", "", t, flags=re.IGNORECASE)
@@ -153,20 +155,22 @@ def clean_offer_title(title: str, category: str = "") -> str:
     ]
     parts = re.split("|".join(split_markers), t, flags=re.IGNORECASE)
 
-    # Check candidates from back to front
+    # Check candidates from back to front (PRESERVE leading numbers like 8 Inch Pizza in candidate sub-phrases!)
     candidates = []
     for p in reversed(parts):
-        p_clean = re.sub(r"^\d+\s+", "", p.strip())
+        # Strip catalog 3-digit IDs at start of sub-phrase but KEEP single/double digit measurements like 8 Inch, 2 Drinks
+        p_clean = re.sub(r"^\d{3,}\s+", "", p.strip())
         p_clean = re.sub(r"\s+", " ", p_clean).strip()
         p_clean = re.sub(r"[\s&\+\-,\:\;/\\]+$", "", p_clean).strip()
-        if len(p_clean) >= 5 and not is_corrupted_title(p_clean):
+
+        if len(p_clean) >= 3 and not is_corrupted_title(p_clean):
             if any(len(w) >= 3 and sum(1 for c in w.lower() if c in "aeiouy") >= 1 for w in p_clean.split()):
                 candidates.append(p_clean)
 
     if candidates:
         for c in candidates:
             c_lower = c.lower()
-            if any(k in c_lower for k in ["buffet", "lunch", "dinner", "unlimited", "off", "bogo", "1+1", "beer", "wine", "spirits", "facial", "massage", "haircut", "pedicure", "manicure", "coffee", "mocktail", "cocktail", "starters", "drinks"]):
+            if any(k in c_lower for k in ["buffet", "lunch", "dinner", "unlimited", "off", "bogo", "1+1", "beer", "wine", "spirits", "facial", "massage", "haircut", "pedicure", "manicure", "coffee", "mocktail", "cocktail", "starters", "drinks", "pizza"]):
                 return c
         return candidates[0]
 
@@ -174,8 +178,8 @@ def clean_offer_title(title: str, category: str = "") -> str:
     t = re.sub(r"\s+", " ", t).strip()
     t = re.sub(r"[\s&\+\-,\:\;/\\]+$", "", t).strip()
 
-    # Reject venue fragments like 'At Restrobar' or 'At Ice'
-    if re.match(r"^(?:\d+\s+)?At\s+[A-Za-z0-9\s]+$", t, re.IGNORECASE):
+    # Reject junk titles
+    if re.match(r"^(?:\d+|\w+)?\s*At(?:\s+(?:&|\+|At|[A-Za-z0-9]+))?$", t, re.IGNORECASE):
         return get_clean_title_fallback(category)
 
     if not t or len(t) < 3 or t.isdigit() or is_corrupted_title(t):
