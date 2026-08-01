@@ -43,7 +43,7 @@ def is_corrupted_title(title: str) -> bool:
     p_lower = p.lower()
 
     # Known OCR junk tokens
-    junk_tokens = ["llb", "ianncj", "awto", "anot", "trthhe", "pwaays", "pblaeya", "maineat", "bsuhyo", "bbiulliyn", "sveorutsc", "bcuoyu", "rtsheis", "coen", "pchaoyi", "v0o%u", "n9ly9"]
+    junk_tokens = ["llb", "ianncj", "awto", "anot", "trthhe", "pwaays", "pblaeya", "maineat", "bsuhyo", "bbiulliyn", "sveorutsc", "bcuoyu", "rtsheis", "coen", "pchaoyi", "v0o%u", "n9ly9", "just wh", "imcpel", "imsaelnot", "om de", "face d"]
     if any(k in p_lower for k in junk_tokens):
         return True
 

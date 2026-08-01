@@ -1,6 +1,9 @@
 import logging
 from typing import Dict, List, Any
-from v2.search.search_engine import load_deals, normalize_deal, clean_offer_title, search_deals
+from v2.search.search_engine import (
+    load_deals, normalize_deal, clean_offer_title, search_deals,
+    is_corrupted_title, is_placeholder_title, recover_title_from_deal, FALLBACK_TITLES
+)
 from v2.ai.profile import profile_manager
 
 logger = logging.getLogger(__name__)
@@ -133,26 +136,41 @@ class MerchantGrowthAgent:
         Milestone 2 - Step 3: AI Offer Recommendation Engine Report.
         Generates structured offer insights including best/worst performing offers, highest discount,
         suggested new offer ideas, pricing strategy, promotion strategy, and revenue tips.
+        Ensures corrupted titles are detected and replaced with 'Special Offer' (or clean recovered title).
         """
         deals = self.get_merchant_dataset()
 
+        def format_safe_title(deal: Dict[str, Any], fallback: str = "Special Offer") -> str:
+            raw_t = deal.get("title", "")
+            clean_t = deal.get("clean_title") or raw_t
+
+            if is_placeholder_title(clean_t) or is_corrupted_title(clean_t) or len(clean_t.strip()) < 5:
+                recovered = recover_title_from_deal(deal)
+                if recovered and not is_placeholder_title(recovered) and not is_corrupted_title(recovered) and len(recovered.strip()) >= 5 and recovered not in FALLBACK_TITLES:
+                    return f"{recovered} ({deal.get('brand', 'Merchant')})"
+                return fallback
+
+            return f"{clean_t} ({deal.get('brand', 'Merchant')})"
+
         if deals:
-            # 1. Best Performing Offer (highest rated / weighted score)
             evaluated = [(d, self.evaluate_offer_score(d)) for d in deals]
+
+            # 1. Best Performing Offer (highest rated / weighted score)
             best_deal, _ = max(evaluated, key=lambda x: x[1]["total_score"], default=(deals[0], self.evaluate_offer_score(deals[0])))
-            best_offer_str = f"• {best_deal.get('clean_title')} ({best_deal.get('brand')})"
+            best_offer_str = f"• {format_safe_title(best_deal, 'Special Offer')}"
 
             # 2. Highest Discount Offer
             highest_disc_deal = max(deals, key=lambda x: x.get("discount_percent", 0), default=deals[0])
-            highest_disc_str = f"• {highest_disc_deal.get('discount_percent')}% OFF {highest_disc_deal.get('clean_title')}"
+            safe_disc_title = format_safe_title(highest_disc_deal, "Special Offer")
+            highest_disc_str = f"• {highest_disc_deal.get('discount_percent')}% OFF {safe_disc_title}"
 
             # 3. Lowest Performing Offer
             lowest_deal, _ = min(evaluated, key=lambda x: x[1]["total_score"], default=(deals[0], self.evaluate_offer_score(deals[0])))
-            lowest_offer_str = f"• {lowest_deal.get('clean_title')} ({lowest_deal.get('brand')})"
+            lowest_offer_str = f"• {format_safe_title(lowest_deal, 'Special Offer')}"
         else:
             best_offer_str = "• Flat 50% OFF Dinner"
             highest_disc_str = "• 57% OFF Hair Treatment"
-            lowest_offer_str = "• Special Catalog Offer"
+            lowest_offer_str = "• Special Offer"
 
         return (
             "🎯 AI Offer Recommendation Report\n\n"
