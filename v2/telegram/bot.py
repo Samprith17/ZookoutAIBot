@@ -828,7 +828,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Milestone 13 & Milestone 2 Merchant Router Interception
         if raw_intent.get("is_merchant") or raw_intent["type"].startswith("merchant_"):
             if raw_intent["type"] == "merchant_full_growth_report":
-                await update.message.reply_text(merchant_agent.generate_full_ai_growth_report())
+                await update.message.reply_text(merchant_agent.generate_ai_growth_report())
                 return
             if raw_intent["type"] == "merchant_analytics_report":
                 await update.message.reply_text(analytics_engine.generate_merchant_analytics_report())
@@ -1119,11 +1119,11 @@ def main():
     app.add_handler(CommandHandler("merchant_dashboard", merchant_dashboard_handler))
     app.add_handler(CommandHandler("business_dashboard", merchant_dashboard_handler))
     app.add_handler(CommandHandler("merchant_insights", merchant_dashboard_handler))
-    app.add_handler(CommandHandler("growth_report", lambda u, c: u.message.reply_text(merchant_agent.generate_full_ai_growth_report())))
-    app.add_handler(CommandHandler("full_business_report", lambda u, c: u.message.reply_text(merchant_agent.generate_full_ai_growth_report())))
-    app.add_handler(CommandHandler("ai_growth_report", lambda u, c: u.message.reply_text(merchant_agent.generate_full_ai_growth_report())))
-    app.add_handler(CommandHandler("merchant_summary", lambda u, c: u.message.reply_text(merchant_agent.generate_full_ai_growth_report())))
-    app.add_handler(CommandHandler("performance_report", lambda u, c: u.message.reply_text(merchant_agent.generate_full_ai_growth_report())))
+    app.add_handler(CommandHandler("growth_report", lambda u, c: u.message.reply_text(merchant_agent.generate_ai_growth_report())))
+    app.add_handler(CommandHandler("full_business_report", lambda u, c: u.message.reply_text(merchant_agent.generate_ai_growth_report())))
+    app.add_handler(CommandHandler("ai_growth_report", lambda u, c: u.message.reply_text(merchant_agent.generate_ai_growth_report())))
+    app.add_handler(CommandHandler("merchant_summary", lambda u, c: u.message.reply_text(merchant_agent.generate_ai_growth_report())))
+    app.add_handler(CommandHandler("performance_report", lambda u, c: u.message.reply_text(merchant_agent.generate_ai_growth_report())))
     app.add_handler(CommandHandler("slow_hours", lambda u, c: u.message.reply_text(merchant_agent.generate_slow_hours_performance_report())))
     app.add_handler(CommandHandler("peak_hours", lambda u, c: u.message.reply_text(merchant_agent.generate_slow_hours_performance_report())))
     app.add_handler(CommandHandler("business_analysis", lambda u, c: u.message.reply_text(merchant_agent.generate_slow_hours_performance_report())))

@@ -197,6 +197,13 @@ class MerchantGrowthAgent:
             "• Rotate promotions weekly."
         )
 
+    def generate_ai_growth_report(self) -> str:
+        """
+        Milestone 2 - Step 5: Comprehensive AI Growth Report.
+        Unified handler for AI Growth Report, Merchant Summary, Performance Report, Full Business Report, and Growth Report.
+        """
+        return self.generate_full_ai_growth_report()
+
     def generate_full_ai_growth_report(self) -> str:
         """
         Milestone 2 - Step 5: Comprehensive AI Growth Report Automation.
