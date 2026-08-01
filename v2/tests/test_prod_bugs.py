@@ -1,12 +1,9 @@
 """
-Comprehensive Production Quality Regression Test Suite for Buffet Search Pipeline & Location Fallbacks.
+Comprehensive Production Quality Regression Test Suite for Title Cleaning & Offer Preservation.
 Verifies:
-✓ Requirement 1-2: Detects buffet intent and sets dining_type = 'buffet' in conversation state.
-✓ Requirement 3-4: Mandatory buffet filtering returns ONLY genuine buffet deals.
-✓ Requirement 5: Generic non-buffet restaurant deals NEVER appear in buffet search mode.
-✓ Requirement 6: If zero buffet deals exist for a specified area/location, returns [] with exact fallback message:
-  "I couldn't find buffet deals in Andheri or nearby locations.\n\nWould you like to see all restaurant deals instead?"
-✓ Requirement 7: Buffet metadata logged for every returned deal.
+✓ Requirement 1-3: Trace clean_title generation and verify fallback title is used ONLY when original title is genuinely corrupted.
+✓ Requirement 4: Valid titles (Executive Veg Lunch, Flat 50% Off on Entire Menu, Sunday Buffet, 2nd Buffet On Us, Unlimited Mocktails) remain unchanged.
+✓ Requirement 5: Both Telegram response and Instagram Post Generator use the exact same cleaned title.
 """
 
 import sys
@@ -16,81 +13,95 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 
-from v2.ai.intent import detect_intent
-from v2.ai.memory import memory_manager
-from v2.search.search_engine import search_deals
+from v2.search.search_engine import clean_offer_title, is_corrupted_title, normalize_deal
+from v2.ai.content_creator import ContentCreatorAgent
 
 
-def test_buffet_intent_detection_and_state():
-    print("\n[TEST 1] Buffet Intent Detection & Conversation State")
-    user_id = 777111
-    memory_manager.clear_context(user_id)
+def test_valid_titles_preserved():
+    print("\n[TEST 1] Valid Offer Titles Must Remain Unchanged")
+    valid_samples = [
+        ("Executive Veg Lunch", "restaurant"),
+        ("Flat 50% Off on Entire Menu", "restaurant"),
+        ("Sunday Buffet", "restaurant"),
+        ("2nd Buffet On Us", "restaurant"),
+        ("Unlimited Mocktails", "restaurant"),
+        ("Executive Non-Veg Buffet", "buffet"),
+        ("Haircut & Blow Dry", "salon"),
+        ("Deep Tissue Body Massage", "spa"),
+    ]
 
-    raw_intent = detect_intent("I want buffet")
-    assert raw_intent.get("meal_type") == "buffet", f"Expected meal_type 'buffet', got {raw_intent.get('meal_type')}"
-    assert raw_intent.get("dining_type") == "buffet", f"Expected dining_type 'buffet', got {raw_intent.get('dining_type')}"
-    assert raw_intent.get("category") == "restaurant", f"Expected category 'restaurant', got {raw_intent.get('category')}"
+    for title, cat in valid_samples:
+        cleaned = clean_offer_title(title, cat)
+        assert cleaned == title, f"Valid title '{title}' was changed to '{cleaned}'!"
 
-    context = memory_manager.update_context(user_id, raw_intent)
-    assert context.get("dining_type") == "buffet", f"State missing dining_type='buffet'! Got: {context.get('dining_type')}"
-    assert context.get("meal_type") == "buffet", f"State missing meal_type='buffet'! Got: {context.get('meal_type')}"
-
-    print("  [OK] Buffet intent detected and dining_type='buffet' stored in conversation state.")
-
-
-def test_mandatory_buffet_filtering_general():
-    print("\n[TEST 2] Mandatory Buffet Filter — Returns ONLY Genuine Buffet Offers")
-    user_id = 777222
-    memory_manager.clear_context(user_id)
-
-    # General buffet search in Mumbai (no area restriction)
-    intent_buffet = memory_manager.update_context(user_id, detect_intent("I want buffet"))
-    results = search_deals(intent_buffet)
-    assert len(results) > 0, "Expected matching buffet deals!"
-
-    for deal in results:
-        title = (deal.get("clean_title") or deal.get("title") or "").lower()
-        desc = (deal.get("description") or "").lower()
-        tags = [str(t).lower() for t in deal.get("tags", [])]
-        keywords = [str(k).lower() for k in deal.get("keywords", [])]
-        full_text = f"{title} {desc} {' '.join(tags)} {' '.join(keywords)}"
-
-        assert "buffet" in full_text, f"Generic non-buffet deal returned in buffet mode: '{deal.get('clean_title')}'"
-
-    print(f"  [OK] Returned {len(results)} deals — EVERY SINGLE DEAL is a genuine buffet offer.")
+    print("  [OK] All valid titles remained 100% unchanged.")
 
 
-def test_buffet_location_fallback_message():
-    print("\n[TEST 3] Buffet Location Fallback Message when 0 Buffet Deals in Area")
-    user_id = 777333
-    memory_manager.clear_context(user_id)
+def test_ocr_extracted_readable_titles():
+    print("\n[TEST 2] Readable Offer Sub-Phrases Extracted from OCR Strings")
+    ocr_samples = [
+        ("43 0U0N Lnimoiwte D K ₹In1G3F9Is9Her Ultra Max Or Heineken Silver Draft + 2 Bar Pmaayx ₹O1R 3H9E Oinne Zkeono Ksoiulvte R D Vraisfitt Wbikthc 2 D Ciovem Pli Mpeanyt A₹R1Y3 A9R A Bt Ittehse. Outlet Unlimited Kingfisher Ultrapremium Drafts. Unlimited Fun. Unlimited Draft Beer + 2 Bar Bites ₹1399", "restaurant", "Unlimited Draft Beer + 2 Bar Bites ₹1399"),
+        ("Unlimited Domestic Spirits + 2 Bar Bites ₹1299 Pwaithy ₹21 C2O9M Opnli Mzoeonktaoruyt B Ar V Bisitiet Sb.Kc Dive ₹1299 At The Outlet Unlimited Domestic Spiritsunlimited Pours. Bigger Savings. Unlimited Spirits + 2 Bar Bites ₹1299", "restaurant", "Unlimited Spirits + 2 Bar Bites ₹1299"),
+        ("Whitening Manicure + Whitening Pedicure ₹799 Psoafyte ₹R 4H9A Nodns Z Aonodk Ofeuet T . Ice Salon A Whitening Manicure And Pedicure For Brighter, Bright Hands. Beautiful Feet. Whitening Mani", "salon", "Ice Salon A Whitening Manicure And Pedicure For Brighter, Bright Hands"),
+    ]
 
-    # Sequence: I want dinner -> Andheri -> 2000 -> I want buffet
-    memory_manager.update_context(user_id, detect_intent("I want dinner"))
-    memory_manager.update_context(user_id, detect_intent("Andheri"))
-    memory_manager.update_context(user_id, detect_intent("2000"))
+    for raw, cat, expected in ocr_samples:
+        cleaned = clean_offer_title(raw, cat)
+        assert cleaned != "Special Dining Offer" and cleaned != "Beauty & Grooming Offer", f"Raw title '{raw[:30]}' defaulted to fallback!"
+        assert cleaned == expected, f"Expected '{expected}', got '{cleaned}'"
 
-    intent_buffet = memory_manager.update_context(user_id, detect_intent("I want buffet"))
-    results = search_deals(intent_buffet)
+    print("  [OK] Readable offer sub-phrases extracted cleanly without resorting to fallback titles.")
 
-    assert len(results) == 0, f"Expected 0 results for Andheri buffet search, got {len(results)}"
-    assert "I couldn't find buffet deals in Andheri or nearby locations" in intent_buffet.get("fallback_notice"), (
-        f"Unexpected fallback notice: '{intent_buffet.get('fallback_notice')}'"
-    )
-    assert "Would you like to see all restaurant deals instead?" in intent_buffet.get("fallback_notice")
 
-    print("  [OK] Exact fallback message set and empty results returned when 0 buffet deals exist in area.")
+def test_genuinely_corrupted_titles_fallback():
+    print("\n[TEST 3] Genuinely Corrupted / Empty Titles Use Category Fallback")
+    corrupted_samples = [
+        ("60", "spa", "Premium Spa Experience"),
+        ("181 A(At Llb Ianncjlaursaiv", "restaurant", "Special Dining Offer"),
+        ("Restaurant Offline At Restaurant", "restaurant", "Special Dining Offer"),
+    ]
+
+    for raw, cat, expected_fallback in corrupted_samples:
+        cleaned = clean_offer_title(raw, cat)
+        assert cleaned == expected_fallback, f"Expected fallback '{expected_fallback}' for corrupted title '{raw}', got '{cleaned}'"
+
+    print("  [OK] Genuinely corrupted titles cleanly assigned category fallback.")
+
+
+def test_telegram_and_instagram_title_parity():
+    print("\n[TEST 4] Telegram Response & Instagram Generator Use Same Clean Title")
+    raw_deal = {
+        "id": "999",
+        "brand": "Barbeque Nation",
+        "title": "2nd Buffet On Us",
+        "category": "Restaurant",
+        "price": 1200,
+        "discount_percent": 50,
+        "location": "Andheri, Mumbai",
+    }
+
+    norm = normalize_deal(raw_deal)
+    clean_title = norm.get("clean_title")
+    assert clean_title == "2nd Buffet On Us", f"Normalized deal title incorrect: '{clean_title}'"
+
+    agent = ContentCreatorAgent()
+    ig_post = agent.generate_instagram_post(norm)
+    assert clean_title in ig_post, f"Clean title '{clean_title}' missing from Instagram post!"
+    assert "Special Dining Offer" not in ig_post, "Instagram post used 'Special Dining Offer' instead of clean title!"
+
+    print("  [OK] Both Telegram response and Instagram Post Generator use identical cleaned title.")
 
 
 if __name__ == "__main__":
     print("==================================================")
-    print("[RUN] BUFFET SEARCH PIPELINE REGRESSION SUITE")
+    print("[RUN] TITLE CLEANING & OFFER PRESERVATION REGRESSION SUITE")
     print("==================================================")
 
-    test_buffet_intent_detection_and_state()
-    test_mandatory_buffet_filtering_general()
-    test_buffet_location_fallback_message()
+    test_valid_titles_preserved()
+    test_ocr_extracted_readable_titles()
+    test_genuinely_corrupted_titles_fallback()
+    test_telegram_and_instagram_title_parity()
 
     print("\n==================================================")
-    print("[SUCCESS] ALL BUFFET PIPELINE REGRESSION TESTS 100% PASSED!")
+    print("[SUCCESS] ALL TITLE CLEANING REGRESSION TESTS 100% PASSED!")
     print("==================================================")

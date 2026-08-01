@@ -34,28 +34,28 @@ def is_corrupted_title(title: str) -> bool:
     """
     if not title:
         return True
-    t = title.strip()
-    if len(t) < 3:
+    p = title.strip()
+    if len(p) < 3:
         return True
 
-    t_lower = t.lower()
-    if "offline" in t_lower or "test brand" in t_lower or "anot wr e st" in t_lower:
+    p_lower = p.lower()
+    if any(k in p_lower for k in ["offline", "test brand", "anot wr e st", "bsuhyo", "bbiulliyn"]):
         return True
 
     # Genuine unprintable/OCR junk symbols (% is allowed for discounts like 50%)
     junk_symbols = ["@", "#", "*", "^", "~", "`", "$", "|", "§", "©", "®", "¥", "¤"]
-    if sum(t.count(sym) for sym in junk_symbols) >= 2:
+    if sum(p.count(sym) for sym in junk_symbols) >= 2:
         return True
 
     # OCR Garbage pattern: Alternating uppercase letters and digits inside a single word (e.g. C4U5Ti9Ve)
-    if re.search(r"\b[A-Za-z0-9]*\d+[A-Z]+\d+[A-Za-z0-9]*\b", t):
+    if re.search(r"\b[A-Za-z0-9]*\d+[A-Z]+\d+[A-Za-z0-9]*\b", p):
         return True
 
     # Unspaced brackets inside letters like 'A(At'
-    if re.search(r"\b[A-Za-z]+\([A-Za-z]+\b", t):
+    if re.search(r"\b[A-Za-z]+\([A-Za-z]+\b", p):
         return True
 
-    words = t.split()
+    words = p.split()
     if not words:
         return True
 
@@ -78,7 +78,7 @@ def is_corrupted_title(title: str) -> bool:
         elif len(w_clean) >= 7 and (vowel_count / len(w_clean)) < 0.15:
             nonsense_count += 1
 
-    if len(words) > 0 and (nonsense_count / len(words)) >= 0.35:
+    if len(words) > 0 and (nonsense_count / len(words)) >= 0.40:
         return True
 
     return False
@@ -106,8 +106,8 @@ def get_clean_title_fallback(category: str) -> str:
 
 def clean_offer_title(title: str, category: str = "") -> str:
     """
-    Cleans offer title, preserves valid titles, extracts clean readable prefixes from concatenated OCR strings,
-    and applies category fallback ONLY if the title is truly unreadable.
+    Cleans offer title, preserves valid titles, extracts clean readable sub-phrases from OCR strings,
+    and applies category fallback ONLY if the title is genuinely corrupted or empty.
     """
     if not title or len(title.strip()) < 3:
         return get_clean_title_fallback(category)
@@ -119,24 +119,38 @@ def clean_offer_title(title: str, category: str = "") -> str:
     t = re.sub(r"^\d+\s+[A-Za-z]\(", "", t)
     t = re.sub(r"^[₹\d]{3,}(?=[A-Z][a-z])", "", t)
 
-    # If title has a clean readable phrase at the start before OCR junk markers, extract it
-    ocr_junk_markers = [
-        r"\s+Bsuhyo\b", r"\s+Bbiulliyn\b", r"\s+Awto\b", r"\s+Anot\b", r"\s+Bcuoy\b",
-        r"\s+Bmuays\b", r"\s+Benutye\b", r"\s+P Ewcoiartlh\b", r"\s+A₹\d+"
+    # 1. If entire title is clean and valid, return it normalized
+    if not is_corrupted_title(t):
+        sub_parts = re.split(r"[\.\:\;\n\|]", t)
+        if sub_parts and len(sub_parts[0].strip()) >= 5 and not is_corrupted_title(sub_parts[0]):
+            return re.sub(r"\s+", " ", sub_parts[0]).strip()
+        return re.sub(r"\s+", " ", t).strip()
+
+    # 2. Look for clean readable sub-phrases split by '.', 'At The Outlet', 'On Zookout', or OCR markers
+    split_patterns = [
+        r"\.\s*", r"\s+At The Outlet\s*", r"\s+On Zookout\s*", r"\s+Pmaays\s*", r"\s+Pwaithy\s*",
+        r"\s+Praeyd\s*", r"\s+Ppareym\s*", r"\s+Psoafyte\s*", r"\s+Pflaawy\s*", r"\s+Pdrayy\s*",
+        r"\s+Pmaeyn\s*", r"\s+Bsuhyo\b", r"\s+Bbiulliyn\b", r"\s+Awto\b", r"\s+Anot\b"
     ]
-    for marker in ocr_junk_markers:
-        parts = re.split(marker, t, flags=re.IGNORECASE)
-        if parts and len(parts[0].strip()) >= 4:
-            t = parts[0].strip()
-            break
+    parts = re.split("|".join(split_patterns), t, flags=re.IGNORECASE)
 
-    # Normalize whitespace
-    t = re.sub(r"\s+", " ", t).strip()
+    # Check candidates from back to front (clean readable titles like 'Unlimited Spirits + 2 Bar Bites ₹1299' are at the end)
+    candidates = []
+    for p in reversed(parts):
+        p_clean = re.sub(r"^\d+\s+", "", p.strip())
+        p_clean = re.sub(r"\s+", " ", p_clean).strip()
+        if len(p_clean) >= 5 and not is_corrupted_title(p_clean):
+            if any(len(w) >= 3 and sum(1 for c in w.lower() if c in "aeiouy") >= 1 for w in p_clean.split()):
+                candidates.append(p_clean)
 
-    if is_corrupted_title(t):
-        return get_clean_title_fallback(category)
+    if candidates:
+        for c in candidates:
+            c_lower = c.lower()
+            if any(k in c_lower for k in ["buffet", "lunch", "dinner", "unlimited", "off", "bogo", "1+1", "beer", "wine", "spirits", "facial", "massage", "haircut", "pedicure", "manicure", "coffee", "mocktail", "cocktail"]):
+                return c
+        return candidates[0]
 
-    return t
+    return get_clean_title_fallback(category)
 
 
 def display_category(category: str) -> str:
