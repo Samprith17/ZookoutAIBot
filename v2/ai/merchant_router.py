@@ -9,6 +9,14 @@ from typing import Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 MERCHANT_ROUTES = {
+    # Milestone 2 Step 2 Merchant Slow-Hour & Performance Analysis Routes
+    "merchant_slow_hours_analysis": [
+        "slow hours", "peak hours", "business analysis", "sales prediction",
+        "merchant analytics", "slow hour prediction", "peak hour prediction",
+        "happy hour", "/slow_hours", "/peak_hours", "/business_analysis",
+        "/sales_prediction", "/merchant_analytics"
+    ],
+
     # Milestone 2 Merchant Growth Agent Routes (Unified Dashboard)
     "merchant_growth_report": [
         "merchant dashboard", "business dashboard", "merchant insights",

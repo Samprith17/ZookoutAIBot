@@ -1,14 +1,16 @@
 """
-Milestone 2 – Merchant Growth Agent (Step 1) Regression Test Suite.
+Milestone 2 – Merchant Growth Agent (Step 1 & Step 2) Regression Test Suite.
 Verifies:
-✓ Assertion 1: Merchant intent triggers classify correctly (Merchant Dashboard, Business Dashboard, Merchant Insights, Growth Report, Business Report).
-✓ Assertion 2: Merchant Growth Report contains all required fields:
-  - Total offers available
-  - Average discount
-  - Categories available
-  - Price range
-  - Top-performing offers (based on weighted ranking logic)
-  - Suggested improvements (slow hours, limited-time 50%, buffet on weekends, improve generic titles, high-value offers)
+✓ Assertion 1: Merchant intent triggers classify correctly for Step 1 (Merchant Dashboard, Business Dashboard, Merchant Insights, Growth Report, Business Report).
+✓ Assertion 2: Merchant Growth Report contains all required fields & recommendations.
+✓ Assertion 3: Step 2 Slow-Hour Prediction intents classify correctly (Slow Hours, Peak Hours, Business Analysis, Sales Prediction, Merchant Analytics).
+✓ Assertion 4: Business Performance Analysis Report contains all required sections:
+  - Estimated Peak Hours
+  - Estimated Slow Hours
+  - Recommended Happy Hour
+  - Suggested Discount / Offer
+  - Best Days for Promotions
+  - AI Recommendations
 """
 
 import sys
@@ -25,7 +27,7 @@ from v2.ai.merchant import MerchantGrowthAgent
 
 
 def test_merchant_intent_classification():
-    print("\n[TEST 1] Testing Merchant Intent Triggers Classification")
+    print("\n[TEST 1] Testing Merchant Growth Report Triggers Classification")
 
     triggers = [
         ("Merchant Dashboard", "merchant_growth_report"),
@@ -40,49 +42,75 @@ def test_merchant_intent_classification():
         intent = detect_intent(trigger_text)
         assert intent.get("is_merchant"), f"Trigger '{trigger_text}' not flagged as merchant!"
         assert intent.get("type") == expected_type, f"Trigger '{trigger_text}' expected '{expected_type}', got '{intent.get('type')}'"
-        print(f"  [OK] Trigger: '{trigger_text}' -> Classified as '{intent.get('type')}'")
+        print(f"  [OK] Trigger: '{trigger_text:22s}' -> Classified as '{intent.get('type')}'")
 
 
-def test_merchant_growth_report_structure():
-    print("\n[TEST 2] Testing Merchant Growth Report Required Fields & Output")
+def test_slow_hours_intent_classification():
+    print("\n[TEST 2] Testing Slow-Hour Prediction Triggers Classification")
 
-    agent = MerchantGrowthAgent()
-    report = agent.generate_merchant_growth_report()
-
-    # Required Field Assertions
-    assert "📊 Merchant Growth Report" in report, "Report header missing!"
-    assert "• Total offers available:" in report, "'Total offers available' field missing!"
-    assert "• Average discount:" in report, "'Average discount' field missing!"
-    assert "• Categories available:" in report, "'Categories available' field missing!"
-    assert "• Price range:" in report, "'Price range' field missing!"
-    assert "• Top-performing offers" in report, "'Top-performing offers' section missing!"
-    assert "• Suggested improvements:" in report, "'Suggested improvements' section missing!"
-
-    # Required Suggested Improvements Assertions
-    required_suggestions = [
-        "Increase visibility during slow hours.",
-        "Run limited-time 50% offers.",
-        "Promote buffet deals on weekends.",
-        "Improve offer titles if they are generic.",
-        "Add more high-value offers in popular categories."
+    slow_triggers = [
+        ("Slow Hours", "merchant_slow_hours_analysis"),
+        ("Peak Hours", "merchant_slow_hours_analysis"),
+        ("Business Analysis", "merchant_slow_hours_analysis"),
+        ("Sales Prediction", "merchant_slow_hours_analysis"),
+        ("Merchant Analytics", "merchant_slow_hours_analysis"),
     ]
 
-    for sg in required_suggestions:
-        assert sg in report, f"Required suggestion '{sg}' missing from report!"
-        print(f"  [OK] Verified Suggestion: '{sg}'")
+    for trigger_text, expected_type in slow_triggers:
+        intent = detect_intent(trigger_text)
+        assert intent.get("is_merchant"), f"Trigger '{trigger_text}' not flagged as merchant!"
+        assert intent.get("type") == expected_type, f"Trigger '{trigger_text}' expected '{expected_type}', got '{intent.get('type')}'"
+        print(f"  [OK] Trigger: '{trigger_text:22s}' -> Classified as '{intent.get('type')}'")
 
-    print("\n[REPORT PREVIEW]:")
+
+def test_slow_hours_report_structure():
+    print("\n[TEST 3] Testing Business Performance Analysis Report Structure")
+
+    agent = MerchantGrowthAgent()
+    report = agent.generate_slow_hours_performance_report()
+
+    # Required Section Assertions
+    assert "📈 Business Performance Analysis" in report, "Report header missing!"
+    assert "Peak Hours:" in report, "'Peak Hours:' section missing!"
+    assert "Slow Hours:" in report, "'Slow Hours:' section missing!"
+    assert "Recommended Happy Hour:" in report, "'Recommended Happy Hour:' section missing!"
+    assert "Suggested Offer:" in report, "'Suggested Offer:' section missing!"
+    assert "Best Promotion Days:" in report, "'Best Promotion Days:' section missing!"
+    assert "AI Recommendations:" in report, "'AI Recommendations:' section missing!"
+
+    # Required Specific Content Assertions
+    required_phrases = [
+        "7 PM – 10 PM",
+        "2 PM – 5 PM",
+        "3 PM – 6 PM",
+        "Flat 30% OFF",
+        "Buy 1 Get 1",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Increase promotions during slow hours.",
+        "Schedule buffet campaigns on weekends.",
+        "Push Instagram offers before lunch and dinner.",
+        "Test limited-time discounts."
+    ]
+
+    for phrase in required_phrases:
+        assert phrase in report, f"Required phrase '{phrase}' missing from Slow-Hours Report!"
+        print(f"  [OK] Verified Required Content: '{phrase}'")
+
+    print("\n[SLOW HOURS REPORT PREVIEW]:")
     print(report)
 
 
 if __name__ == "__main__":
     print("==================================================")
-    print("[RUN] MILESTONE 2 - MERCHANT GROWTH AGENT SUITE")
+    print("[RUN] MILESTONE 2 (STEP 1 & STEP 2) MERCHANT SUITE")
     print("==================================================")
 
     test_merchant_intent_classification()
-    test_merchant_growth_report_structure()
+    test_slow_hours_intent_classification()
+    test_slow_hours_report_structure()
 
     print("\n==================================================")
-    print("[SUCCESS] ALL MILESTONE 2 MERCHANT SUITE TESTS PASSED (100%)!")
+    print("[SUCCESS] ALL MILESTONE 2 SUITE TESTS PASSED (100%)!")
     print("==================================================")

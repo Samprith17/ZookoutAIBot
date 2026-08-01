@@ -89,6 +89,45 @@ class MerchantGrowthAgent:
         """Returns structured Merchant Growth Report for merchant dashboard requests."""
         return self.generate_merchant_growth_report()
 
+    def generate_slow_hours_performance_report(self, category: str = "Restaurant") -> str:
+        """
+        Milestone 2 - Step 2: AI Slow-Hour Prediction & Performance Report.
+        Generates structured Business Performance Analysis with estimated peak/slow hours and happy hour suggestions.
+        """
+        cat_lower = (category or "").lower()
+
+        if "spa" in cat_lower or "salon" in cat_lower or "beauty" in cat_lower:
+            peak_hours = "• 11 AM – 2 PM & 5 PM – 8 PM"
+            slow_hours = "• 1 PM – 4 PM"
+            happy_hours = "• 2 PM – 5 PM"
+        else:
+            peak_hours = "• 7 PM – 10 PM"
+            slow_hours = "• 2 PM – 5 PM"
+            happy_hours = "• 3 PM – 6 PM"
+
+        return (
+            "📈 Business Performance Analysis\n\n"
+            "Peak Hours:\n"
+            f"{peak_hours}\n\n"
+            "Slow Hours:\n"
+            f"{slow_hours}\n\n"
+            "Recommended Happy Hour:\n"
+            f"{happy_hours}\n\n"
+            "Suggested Offer:\n"
+            "• Flat 30% OFF\n"
+            "or\n"
+            "• Buy 1 Get 1\n\n"
+            "Best Promotion Days:\n"
+            "• Monday\n"
+            "• Tuesday\n"
+            "• Wednesday\n\n"
+            "AI Recommendations:\n"
+            "• Increase promotions during slow hours.\n"
+            "• Schedule buffet campaigns on weekends.\n"
+            "• Push Instagram offers before lunch and dinner.\n"
+            "• Test limited-time discounts."
+        )
+
     def get_merchant_dataset(self) -> List[Dict[str, Any]]:
         """Returns the single consistent normalized dataset across all Merchant AI features."""
         deals = load_deals()

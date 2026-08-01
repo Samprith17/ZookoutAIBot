@@ -827,6 +827,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Milestone 13 & Milestone 2 Merchant Router Interception
         if raw_intent.get("is_merchant") or raw_intent["type"].startswith("merchant_"):
+            if raw_intent["type"] == "merchant_slow_hours_analysis":
+                await update.message.reply_text(merchant_agent.generate_slow_hours_performance_report())
+                return
             if raw_intent["type"] in ["merchant_growth_report", "merchant_dashboard"]:
                 await update.message.reply_text(merchant_agent.generate_merchant_growth_report())
                 return
@@ -1109,6 +1112,11 @@ def main():
     app.add_handler(CommandHandler("merchant_insights", merchant_dashboard_handler))
     app.add_handler(CommandHandler("growth_report", merchant_dashboard_handler))
     app.add_handler(CommandHandler("business_report", merchant_dashboard_handler))
+    app.add_handler(CommandHandler("slow_hours", lambda u, c: u.message.reply_text(merchant_agent.generate_slow_hours_performance_report())))
+    app.add_handler(CommandHandler("peak_hours", lambda u, c: u.message.reply_text(merchant_agent.generate_slow_hours_performance_report())))
+    app.add_handler(CommandHandler("business_analysis", lambda u, c: u.message.reply_text(merchant_agent.generate_slow_hours_performance_report())))
+    app.add_handler(CommandHandler("sales_prediction", lambda u, c: u.message.reply_text(merchant_agent.generate_slow_hours_performance_report())))
+    app.add_handler(CommandHandler("merchant_analytics", lambda u, c: u.message.reply_text(merchant_agent.generate_slow_hours_performance_report())))
     app.add_handler(CommandHandler("offer_health", merchant_health_handler))
     app.add_handler(CommandHandler("compare_offers", merchant_compare_handler))
     app.add_handler(CommandHandler("promote", merchant_promote_handler))
