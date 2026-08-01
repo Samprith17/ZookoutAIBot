@@ -120,6 +120,10 @@ def clean_offer_title(title: str, category: str = "") -> str:
     t = re.sub(r"^[₹\d]{3,}(?=[A-Z][a-z])", "", t)
     t = re.sub(r"\s+Pchaoyi\s*.*$", "", t, flags=re.IGNORECASE)
 
+    # Venue fragments like 'At Restrobar', 'At Ice', 'At Solitaire Kit' are not offer titles
+    if re.match(r"^(?:\d+\s+)?At\s+[A-Za-z0-9\s]+$", t, re.IGNORECASE):
+        return get_clean_title_fallback(category)
+
     # 1. If entire title is clean and valid, return it normalized
     if not is_corrupted_title(t):
         sub_parts = re.split(r"[\.\:\;\n\|]", t)
