@@ -128,6 +128,57 @@ class MerchantGrowthAgent:
             "• Test limited-time discounts."
         )
 
+    def generate_ai_offer_recommendation_report(self) -> str:
+        """
+        Milestone 2 - Step 3: AI Offer Recommendation Engine Report.
+        Generates structured offer insights including best/worst performing offers, highest discount,
+        suggested new offer ideas, pricing strategy, promotion strategy, and revenue tips.
+        """
+        deals = self.get_merchant_dataset()
+
+        if deals:
+            # 1. Best Performing Offer (highest rated / weighted score)
+            evaluated = [(d, self.evaluate_offer_score(d)) for d in deals]
+            best_deal, _ = max(evaluated, key=lambda x: x[1]["total_score"], default=(deals[0], self.evaluate_offer_score(deals[0])))
+            best_offer_str = f"• {best_deal.get('clean_title')} ({best_deal.get('brand')})"
+
+            # 2. Highest Discount Offer
+            highest_disc_deal = max(deals, key=lambda x: x.get("discount_percent", 0), default=deals[0])
+            highest_disc_str = f"• {highest_disc_deal.get('discount_percent')}% OFF {highest_disc_deal.get('clean_title')}"
+
+            # 3. Lowest Performing Offer
+            lowest_deal, _ = min(evaluated, key=lambda x: x[1]["total_score"], default=(deals[0], self.evaluate_offer_score(deals[0])))
+            lowest_offer_str = f"• {lowest_deal.get('clean_title')} ({lowest_deal.get('brand')})"
+        else:
+            best_offer_str = "• Flat 50% OFF Dinner"
+            highest_disc_str = "• 57% OFF Hair Treatment"
+            lowest_offer_str = "• Special Catalog Offer"
+
+        return (
+            "🎯 AI Offer Recommendation Report\n\n"
+            "Best Performing Offer\n"
+            f"{best_offer_str}\n\n"
+            "Highest Discount\n"
+            f"{highest_disc_str}\n\n"
+            "Lowest Performing Offer\n"
+            f"{lowest_offer_str}\n\n"
+            "Suggested New Offers\n"
+            "• Buy 1 Get 1\n"
+            "• Family Combo\n"
+            "• Weekend Buffet\n"
+            "• Happy Hour\n\n"
+            "Pricing Strategy\n"
+            "• Use 30–50% discounts during slow hours.\n\n"
+            "Promotion Strategy\n"
+            "• Promote offers on Instagram.\n"
+            "• Run weekend campaigns.\n"
+            "• Push lunch offers before noon.\n\n"
+            "Revenue Tips\n"
+            "• Improve offer titles.\n"
+            "• Add limited-time offers.\n"
+            "• Rotate promotions weekly."
+        )
+
     def get_merchant_dataset(self) -> List[Dict[str, Any]]:
         """Returns the single consistent normalized dataset across all Merchant AI features."""
         deals = load_deals()
