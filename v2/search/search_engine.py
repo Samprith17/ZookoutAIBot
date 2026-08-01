@@ -30,6 +30,7 @@ def is_corrupted_title(title: str) -> bool:
     - 'Ow E Xe ₹C4U5Ti9Ve Veg Lunch' -> Corrupted
     - '₹4E5X9Ecutive' -> Corrupted
     - '181 A(At Llb Ianncjlaursaiv' -> Corrupted
+    - 'S + Maineat For Two, For One' -> Corrupted
     - 'Restaurant Offline At Restaurant' -> Corrupted
     """
     if not title:
@@ -39,7 +40,7 @@ def is_corrupted_title(title: str) -> bool:
         return True
 
     p_lower = p.lower()
-    if any(k in p_lower for k in ["offline", "test brand", "anot wr e st", "bsuhyo", "bbiulliyn"]):
+    if any(k in p_lower for k in ["offline", "test brand", "anot wr e st", "bsuhyo", "bbiulliyn", "maineat"]):
         return True
 
     # Genuine unprintable/OCR junk symbols (% is allowed for discounts like 50%)
@@ -114,6 +115,10 @@ def clean_offer_title(title: str, category: str = "") -> str:
 
     t = title.strip()
 
+    # Explicit OCR garbage titles that must use clean fallback
+    if "maineat" in t.lower() or t.lower().startswith("s +"):
+        return get_clean_title_fallback(category)
+
     # Strip leading catalog IDs like '181 A(' or '181 ' while preserving ordinals like '2nd Buffet On Us'
     t = re.sub(r"^\d{3,}\s+(?=[A-Za-z])", "", t)
     t = re.sub(r"^\d+\s+[A-Za-z]\(", "", t)
@@ -143,7 +148,7 @@ def clean_offer_title(title: str, category: str = "") -> str:
     ]
     parts = re.split("|".join(split_patterns), t, flags=re.IGNORECASE)
 
-    # Check candidates from back to front (clean readable titles like 'Unlimited Spirits + 2 Bar Bites ₹1299' are at the end)
+    # Check candidates from back to front
     candidates = []
     for p in reversed(parts):
         p_clean = re.sub(r"^\d+\s+", "", p.strip())
@@ -343,7 +348,7 @@ def matches_category(req_category: str, deal: Dict[str, Any]) -> bool:
     text_content = f"{title} {desc} {' '.join(tags)}"
 
     if req in ["restaurant", "dining", "food"]:
-        return any(k in cat or k in text_content for k in ["restaurant", "dining", "food", "buffet", "cafe", "bistro", "barbeque", "eatery"])
+        return any(k in cat or k in text_content for k in ["restaurant", "dining", "food", "buffet", "bistro", "barbeque", "eatery"])
     if req in ["spa", "massage", "wellness"]:
         return any(k in cat or k in text_content for k in ["spa", "massage", "wellness", "therapy", "body", "parlor"])
     if req in ["salon", "hair", "beauty"]:
@@ -362,11 +367,19 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     3. Discount: 20% (Percentage discount)
     4. Rating: 10% (Star rating)
     5. Popularity / Confidence: 10% (Confidence score)
-    6. Offer quality: 5% (Clean readable title & non-zero discount)
+    6. Offer quality & Real Catalog Title Priority
     """
     req_category = intent.get("category")
     max_price = intent.get("max_price")
     sort_by_discount = intent.get("sort_by_discount", False)
+    user_query = (intent.get("query") or "").lower().strip()
+
+    is_buffet_requested = (
+        any(w in user_query for w in ["buffet", "only buffet", "buffet only", "i want buffet", "show buffet"])
+        or intent.get("dining_type") == "buffet"
+        or intent.get("meal_type") == "buffet"
+        or intent.get("occasion") == "Buffet"
+    )
 
     try:
         price = float(str(deal.get("price", "0")).replace(",", ""))
@@ -423,9 +436,13 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     if is_real_title:
         quality_score = 25.0  # Priority bonus for genuine readable catalog offer titles!
     elif disc > 0:
-        quality_score = 5.0
+        quality_score = 0.0
     else:
-        quality_score = 2.5
+        quality_score = -10.0
+
+    # Normal dinner search does NOT prioritize buffet offers over regular dining
+    if not is_buffet_requested and "buffet" in full_text:
+        quality_score -= 2.0
 
     # Final Weighted Sum
     total_score = loc_score + budget_score + disc_score + rating_score + pop_score + quality_score
@@ -447,9 +464,9 @@ def compute_weighted_score(deal: Dict[str, Any], intent: Dict[str, Any], loc_tie
     if max_price and price > 0 and price <= max_price:
         reasons.append(f"Within ₹{int(max_price):,} budget.")
 
-    # ONLY add buffet reasoning if displayed deal metadata genuinely contains buffet
+    # ONLY add buffet reasoning if user explicitly requested buffet AND the deal contains buffet
     is_buffet = "buffet" in full_text
-    if is_buffet:
+    if is_buffet_requested and is_buffet:
         reasons.append("Includes a buffet offer.")
 
     if disc > 0:
@@ -625,7 +642,7 @@ def search_deals(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
             reverse=True
         )
 
-    # Log buffet metadata for every returned deal if buffet mode is active
+    # Log deal metadata for returned deals
     if is_buffet_requested:
         logger.info(f"[BUFFET SEARCH EXIT] Returning {len(matched_scored_deals)} scored buffet deals.")
         for idx, d in enumerate(matched_scored_deals[:4]):
