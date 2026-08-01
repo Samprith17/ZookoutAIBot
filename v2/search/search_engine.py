@@ -107,8 +107,13 @@ def get_clean_title_fallback(category: str) -> str:
 
 def clean_offer_title(title: str, category: str = "") -> str:
     """
-    Cleans offer title, preserves valid titles, extracts clean readable sub-phrases from OCR strings,
-    and applies category fallback ONLY if the title is genuinely corrupted or empty.
+    Milestone 1 Production Title Cleaning & Deduplication Engine:
+    - Removes repeated brand/venue phrases ("Solitaire Kitchen & At Solitaire Kitchen &" -> "Solitaire Kitchen")
+    - Deduplicates consecutive duplicate words ("Solitaire Solitaire" -> "Solitaire")
+    - Strips leading catalog ID markers ("170 & Cappuccino" -> "Cappuccino")
+    - Strips trailing junk symbols (&, +, -, At, OCR noise markers)
+    - Preserves valid titles ("Executive Veg Lunch", "2nd Buffet On Us", "Flat 50% Off on Entire Menu")
+    - Assigns clean category fallback ONLY if title is unrecoverably corrupted or empty.
     """
     if not title or len(title.strip()) < 3:
         return get_clean_title_fallback(category)
@@ -119,40 +124,41 @@ def clean_offer_title(title: str, category: str = "") -> str:
     if "maineat" in t.lower() or t.lower().startswith("s +"):
         return get_clean_title_fallback(category)
 
-    # Strip leading catalog IDs like '181 A(' or '181 ' while preserving ordinals like '2nd Buffet On Us'
-    t = re.sub(r"^\d{3,}\s+(?=[A-Za-z])", "", t)
+    # 1. Deduplicate repeated brand / venue phrases like 'Solitaire Kitchen & At Solitaire Kitchen &' -> 'Solitaire Kitchen'
+    t = re.sub(r"\b([A-Za-z0-9\s]{3,})\s*(?:&|\+)?\s*(?:I\s+)?At\s+\1(?:\s*&|\+)?\b", r"\1", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b([A-Za-z0-9\s]{3,})\s*(?:&|\+)?\s*At\s+.*$", r"\1", t, flags=re.IGNORECASE)
+    t = re.sub(r"\s+At\s+[A-Za-z0-9\s]+$", "", t, flags=re.IGNORECASE)
+
+    # 2. Deduplicate consecutive duplicate words (e.g., 'Solitaire Solitaire' -> 'Solitaire')
+    t = re.sub(r"\b(\w+)(?:\s+\1)+\b", r"\1", t, flags=re.IGNORECASE)
+
+    # 3. Strip leading catalog IDs like '170 & ', '181 A(', '171 ' while keeping ordinals like '2nd Buffet On Us'
+    t = re.sub(r"^\d{3,}\s*(?:&|\+|\-)?\s*(?=[A-Za-z])", "", t)
+    t = re.sub(r"^\d+\s*&\s*", "", t)
     t = re.sub(r"^\d+\s+[A-Za-z]\(", "", t)
     t = re.sub(r"^[₹\d]{3,}(?=[A-Z][a-z])", "", t)
+
+    # 4. Strip trailing OCR noise markers
     t = re.sub(r"\s+Pchaoyi\s*.*$", "", t, flags=re.IGNORECASE)
 
-    # Venue fragments like 'At Restrobar', 'At Ice', 'At Solitaire Kit' are not offer titles
-    if re.match(r"^(?:\d+\s+)?At\s+[A-Za-z0-9\s]+$", t, re.IGNORECASE):
-        return get_clean_title_fallback(category)
+    # Clean punctuation and trailing symbols like &
+    t = re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"[\s&\+\-,\:\;/\\]+$", "", t).strip()
 
-    # 1. If entire title is clean and valid, return it normalized
-    if not is_corrupted_title(t):
-        sub_parts = re.split(r"[\.\:\;\n\|]", t)
-        if sub_parts and len(sub_parts[0].strip()) >= 5 and not is_corrupted_title(sub_parts[0]):
-            res = re.sub(r"\s+", " ", sub_parts[0]).strip()
-            if not re.match(r"^\d+\s+At\b", res, re.IGNORECASE):
-                return res
-        res = re.sub(r"\s+", " ", t).strip()
-        if not re.match(r"^\d+\s+At\b", res, re.IGNORECASE):
-            return res
-
-    # 2. Look for clean readable sub-phrases split by '.', 'At The Outlet', 'On Zookout', or OCR markers
-    split_patterns = [
-        r"\.\s*", r"\s+At The Outlet\s*", r"\s+On Zookout\s*", r"\s+Pmaays\s*", r"\s+Pwaithy\s*",
+    # Split by OCR noise keywords or venue tags to isolate clean title
+    split_markers = [
+        r"\s+At The Outlet\s*", r"\s+On Zookout\s*", r"\s+Pmaays\s*", r"\s+Pwaithy\s*",
         r"\s+Praeyd\s*", r"\s+Ppareym\s*", r"\s+Psoafyte\s*", r"\s+Pflaawy\s*", r"\s+Pdrayy\s*",
-        r"\s+Pmaeyn\s*", r"\s+Bsuhyo\b", r"\s+Bbiulliyn\b", r"\s+Awto\b", r"\s+Anot\b"
+        r"\s+Pmaeyn\s*", r"\s+Pblaeya\s*", r"\s+Bsuhyo\b", r"\s+Bbiulliyn\b", r"\s+Awto\b", r"\s+Anot\b"
     ]
-    parts = re.split("|".join(split_patterns), t, flags=re.IGNORECASE)
+    parts = re.split("|".join(split_markers), t, flags=re.IGNORECASE)
 
     # Check candidates from back to front
     candidates = []
     for p in reversed(parts):
         p_clean = re.sub(r"^\d+\s+", "", p.strip())
         p_clean = re.sub(r"\s+", " ", p_clean).strip()
+        p_clean = re.sub(r"[\s&\+\-,\:\;/\\]+$", "", p_clean).strip()
         if len(p_clean) >= 5 and not is_corrupted_title(p_clean):
             if any(len(w) >= 3 and sum(1 for c in w.lower() if c in "aeiouy") >= 1 for w in p_clean.split()):
                 candidates.append(p_clean)
@@ -160,11 +166,22 @@ def clean_offer_title(title: str, category: str = "") -> str:
     if candidates:
         for c in candidates:
             c_lower = c.lower()
-            if any(k in c_lower for k in ["buffet", "lunch", "dinner", "unlimited", "off", "bogo", "1+1", "beer", "wine", "spirits", "facial", "massage", "haircut", "pedicure", "manicure", "coffee", "mocktail", "cocktail"]):
+            if any(k in c_lower for k in ["buffet", "lunch", "dinner", "unlimited", "off", "bogo", "1+1", "beer", "wine", "spirits", "facial", "massage", "haircut", "pedicure", "manicure", "coffee", "mocktail", "cocktail", "starters", "drinks"]):
                 return c
         return candidates[0]
 
-    return get_clean_title_fallback(category)
+    # Clean punctuation and trailing symbols
+    t = re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"[\s&\+\-,\:\;/\\]+$", "", t).strip()
+
+    # Reject venue fragments like 'At Restrobar' or 'At Ice'
+    if re.match(r"^(?:\d+\s+)?At\s+[A-Za-z0-9\s]+$", t, re.IGNORECASE):
+        return get_clean_title_fallback(category)
+
+    if not t or len(t) < 3 or t.isdigit() or is_corrupted_title(t):
+        return get_clean_title_fallback(category)
+
+    return t
 
 
 def display_category(category: str) -> str:
