@@ -21,15 +21,16 @@ def is_corrupted_title(title: str) -> bool:
     Detects OCR artifact junk, corrupted offer titles, and malformed catalog strings.
     Valid titles MUST NOT be flagged as corrupted:
     - 'Executive Veg Lunch' -> Valid
-    - 'Flat 50% Off on Entire Menu' -> Valid
-    - 'Sunday Buffet' -> Valid
+    - '8 Inch Pizza + 2 Drinks' -> Valid
+    - 'Coffee + Dessert For 2' -> Valid
     - '2nd Buffet On Us' -> Valid
-    - 'Unlimited Mocktails' -> Valid
+    - 'Flat 50% Off on Entire Menu' -> Valid
 
     Corrupted titles MUST be flagged:
+    - 'At Llb Ianncjlaursaiv' -> Corrupted
+    - '181 A(At Llb Ianncjlaursaiv' -> Corrupted
     - 'Ow E Xe ₹C4U5Ti9Ve Veg Lunch' -> Corrupted
     - '₹4E5X9Ecutive' -> Corrupted
-    - '181 A(At Llb Ianncjlaursaiv' -> Corrupted
     - 'S + Maineat For Two, For One' -> Corrupted
     - 'Restaurant Offline At Restaurant' -> Corrupted
     """
@@ -40,7 +41,14 @@ def is_corrupted_title(title: str) -> bool:
         return True
 
     p_lower = p.lower()
-    if any(k in p_lower for k in ["offline", "test brand", "anot wr e st", "bsuhyo", "bbiulliyn", "maineat"]):
+
+    # Known OCR junk tokens
+    junk_tokens = ["llb", "ianncj", "awto", "anot", "trthhe", "pwaays", "pblaeya", "maineat", "bsuhyo", "bbiulliyn", "sveorutsc", "bcuoyu", "rtsheis", "coen", "pchaoyi", "v0o%u", "n9ly9"]
+    if any(k in p_lower for k in junk_tokens):
+        return True
+
+    # Unspaced brackets / malformed prefixes e.g. 'A(At' or '181 A('
+    if re.search(r"[A-Za-z0-9]\([A-Za-z0-9]", p):
         return True
 
     # Genuine unprintable/OCR junk symbols (% is allowed for discounts like 50%)
@@ -48,39 +56,33 @@ def is_corrupted_title(title: str) -> bool:
     if sum(p.count(sym) for sym in junk_symbols) >= 2:
         return True
 
-    # OCR Garbage pattern: Alternating uppercase letters and digits inside a single word (e.g. C4U5Ti9Ve)
+    # OCR Garbage pattern: Alternating uppercase letters and digits inside a single word
     if re.search(r"\b[A-Za-z0-9]*\d+[A-Z]+\d+[A-Za-z0-9]*\b", p):
-        return True
-
-    # Unspaced brackets inside letters like 'A(At'
-    if re.search(r"\b[A-Za-z]+\([A-Za-z]+\b", p):
         return True
 
     words = p.split()
     if not words:
         return True
 
-    nonsense_count = 0
     ordinals = {"1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"}
 
     for w in words:
         w_lower = w.lower()
-        if w_lower in ordinals:
+        if w_lower in ordinals or w_lower.isdigit():
             continue
 
         w_clean = re.sub(r"[^\w]", "", w)
         if not w_clean:
             continue
 
-        # Check for zero-vowel words >= 4 chars (e.g. Llb, Ianncjlaursaiv)
-        vowel_count = sum(1 for c in w_clean.lower() if c in "aeiouy")
-        if len(w_clean) >= 4 and vowel_count == 0 and not w_clean.isdigit():
-            nonsense_count += 1
-        elif len(w_clean) >= 7 and (vowel_count / len(w_clean)) < 0.15:
-            nonsense_count += 1
+        # 4+ consecutive consonants e.g., 'Ianncj', 'Trthhe'
+        if re.search(r"[bcdfghjklmnpqrstvwxz]{4,}", w_clean, re.IGNORECASE):
+            return True
 
-    if len(words) > 0 and (nonsense_count / len(words)) >= 0.40:
-        return True
+        # 3+ letter word with 0 vowels e.g., 'Llb', 'N9Ly9'
+        vowel_count = sum(1 for c in w_clean.lower() if c in "aeiouy")
+        if len(w_clean) >= 3 and vowel_count == 0 and not w_clean.isdigit():
+            return True
 
     return False
 
@@ -107,15 +109,25 @@ def get_clean_title_fallback(category: str) -> str:
 
 def clean_offer_title(title: str, category: str = "") -> str:
     """
-    Milestone 1 Final Production Title Cleaning Engine V4:
+    Milestone 1 Final Production Title Cleaning Engine V5:
+    - Detects OCR artifact junk (Llb, Ianncj, A(At, Trthhe, Awto) and converts to category fallback.
     - Never removes valid numeric prefixes (8 Inch Pizza, 2Nd Buffet On Us, 1+1 Buffet, 50% Off).
-    - Detects junk titles like '45 At', '127 At', '90 At', 'xx At', 'At &', 'At At' and replaces them with category fallback.
     - Preserves valid offer titles and extracts readable offer phrases from OCR strings.
     """
     if not title or len(title.strip()) < 3:
         return get_clean_title_fallback(category)
 
     t = title.strip()
+
+    # Strip malformed leading OCR prefix like '181 A(' or 'A(At'
+    t = re.sub(r"^\d{3,}\s+[A-Za-z]\([A-Za-z]*\s*", "", t)
+    t = re.sub(r"^[A-Za-z]\(At\s*", "", t, flags=re.IGNORECASE)
+
+    # Isolated 'At' prefix e.g. 'At Llb Ianncjlaursaiv' -> Check rest of phrase
+    if re.match(r"^At\s+[A-Za-z0-9\s]+$", t, re.IGNORECASE):
+        sub_p = re.sub(r"^At\s+", "", t, flags=re.IGNORECASE).strip()
+        if is_corrupted_title(sub_p):
+            return get_clean_title_fallback(category)
 
     # Detect junk titles like '45 At', '127 At', '90 At', 'xx At', 'At &', 'At At', 'At Restrobar'
     if re.match(r"^(?:\d+|\w+)?\s*At(?:\s+(?:&|\+|At|[A-Za-z0-9]+))?$", t, re.IGNORECASE):
@@ -127,15 +139,15 @@ def clean_offer_title(title: str, category: str = "") -> str:
     if "maineat" in t.lower() or t.lower().startswith("s +"):
         return get_clean_title_fallback(category)
 
-    # 1. Deduplicate repeated brand / venue phrases like 'Solitaire Kitchen & At Solitaire Kitchen &' -> 'Solitaire Kitchen'
+    # 1. Deduplicate repeated brand / venue phrases
     t = re.sub(r"\b([A-Za-z0-9\s]{3,})\s*(?:&|\+)?\s*(?:I\s+)?At\s+\1(?:\s*&|\+)?\b", r"\1", t, flags=re.IGNORECASE)
     t = re.sub(r"\b([A-Za-z0-9\s]{3,})\s*(?:&|\+)?\s*At\s+.*$", r"\1", t, flags=re.IGNORECASE)
     t = re.sub(r"\s+At\s+[A-Za-z0-9\s]+$", "", t, flags=re.IGNORECASE)
 
-    # 2. Deduplicate consecutive duplicate words (e.g., 'Solitaire Solitaire' -> 'Solitaire')
+    # 2. Deduplicate consecutive duplicate words
     t = re.sub(r"\b(\w+)(?:\s+\1)+\b", r"\1", t, flags=re.IGNORECASE)
 
-    # 3. Strip ONLY explicit catalog IDs like '170 & ', '181 A(' while PRESERVING valid measurements/counts like '8 Inch Pizza', '2nd Buffet On Us'
+    # 3. Strip explicit 3-digit catalog IDs
     t = re.sub(r"^\d{3,}\s*(?:&|\+|\-)\s*(?=[A-Za-z])", "", t)
     t = re.sub(r"^\d{3,}\s+[A-Za-z]\(", "", t)
     t = re.sub(r"^\d+\s*&\s+(?=[A-Za-z])", "", t)
@@ -155,10 +167,8 @@ def clean_offer_title(title: str, category: str = "") -> str:
     ]
     parts = re.split("|".join(split_markers), t, flags=re.IGNORECASE)
 
-    # Check candidates from back to front (PRESERVE leading numbers like 8 Inch Pizza in candidate sub-phrases!)
     candidates = []
     for p in reversed(parts):
-        # Strip catalog 3-digit IDs at start of sub-phrase but KEEP single/double digit measurements like 8 Inch, 2 Drinks
         p_clean = re.sub(r"^\d{3,}\s+", "", p.strip())
         p_clean = re.sub(r"\s+", " ", p_clean).strip()
         p_clean = re.sub(r"[\s&\+\-,\:\;/\\]+$", "", p_clean).strip()
