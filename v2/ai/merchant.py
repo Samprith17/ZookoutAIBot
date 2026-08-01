@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, List, Any
-from v2.search.search_engine import load_deals, normalize_deal, clean_offer_title
+from v2.search.search_engine import load_deals, normalize_deal, clean_offer_title, search_deals
 from v2.ai.profile import profile_manager
 
 logger = logging.getLogger(__name__)
@@ -8,11 +8,86 @@ logger = logging.getLogger(__name__)
 
 class MerchantGrowthAgent:
     """
-    Milestone 13.4 - Production-Ready Consistent Merchant Growth Agent Engine:
-    - Explicit OCR Quality Reporting (Clean OCR Titles: X / N (%)).
-    - Data-Driven Suggestion Engine: Never suggests adding price, location, OCR cleanup, or description if valid data exists.
-    - Unified Normalized Dataset across Dashboard, Comparison, Score, Health, and Promotion.
+    Milestone 13.4 & Milestone 2 - Production-Ready Consistent Merchant Growth Agent Engine:
+    - Explicit OCR Quality Reporting.
+    - Structured Merchant Growth Report for dashboards & growth advice.
     """
+
+    def generate_merchant_growth_report(self) -> str:
+        """
+        Milestone 2 - Merchant Growth Agent (Step 1):
+        Generates structured Merchant Growth Report with catalog metrics, top ranked offers, and AI growth recommendations.
+        """
+        deals = self.get_merchant_dataset()
+        total_offers = len(deals)
+
+        if not deals:
+            return (
+                "📊 Merchant Growth Report\n\n"
+                "• Total offers available: 0\n"
+                "• Average discount: 0%\n"
+                "• Categories available: None\n"
+                "• Price range: ₹0 - ₹0\n\n"
+                "• Top-performing offers:\n"
+                "  No active offers in catalog.\n\n"
+                "• Suggested improvements:\n"
+                "  - Increase visibility during slow hours.\n"
+                "  - Run limited-time 50% offers.\n"
+                "  - Promote buffet deals on weekends.\n"
+                "  - Improve offer titles if they are generic.\n"
+                "  - Add more high-value offers in popular categories."
+            )
+
+        priced_deals = [d for d in deals if float(str(d.get("price", "0")).replace(",", "")) > 0]
+        prices = [float(str(d.get("price", "0")).replace(",", "")) for d in priced_deals] if priced_deals else [0.0]
+        min_price = int(min(prices))
+        max_price = int(max(prices))
+
+        avg_discount = int(sum(d.get("discount_percent", 0) for d in deals) / max(1, total_offers))
+
+        categories = sorted(list({d.get("display_category") for d in deals if d.get("display_category")}))
+        cat_str = ", ".join(categories) if categories else "Restaurant"
+
+        # Top-performing offers based on current weighted recommendation ranking logic
+        ranked_deals = search_deals({"type": "search"})
+        if not ranked_deals:
+            ranked_deals = deals
+
+        top_offers = []
+        for i, raw_d in enumerate(ranked_deals[:4], 1):
+            d = normalize_deal(raw_d)
+            b = d.get("brand", "Merchant")
+            t = d.get("clean_title", "Offer")
+            disc = d.get("discount_percent", 0)
+            rating = d.get("rating", 4.5)
+            top_offers.append(f"  {i}. {b} - {t} (Discount: {disc}%, Rating: ⭐ {rating})")
+
+        top_offers_str = "\n".join(top_offers)
+
+        suggested_improvements = [
+            "  - Increase visibility during slow hours.",
+            "  - Run limited-time 50% offers.",
+            "  - Promote buffet deals on weekends.",
+            "  - Improve offer titles if they are generic.",
+            "  - Add more high-value offers in popular categories."
+        ]
+        improvements_str = "\n".join(suggested_improvements)
+
+        return (
+            "📊 Merchant Growth Report\n\n"
+            f"• Total offers available: {total_offers}\n"
+            f"• Average discount: {avg_discount}%\n"
+            f"• Categories available: {cat_str}\n"
+            f"• Price range: ₹{min_price:,} - ₹{max_price:,}\n\n"
+            "• Top-performing offers (based on current ranking logic):\n"
+            f"{top_offers_str}\n\n"
+            "• Suggested improvements:\n"
+            f"{improvements_str}"
+        )
+
+    def merchant_dashboard(self, user_id: int) -> str:
+        """Returns structured Merchant Growth Report for merchant dashboard requests."""
+        return self.generate_merchant_growth_report()
 
     def get_merchant_dataset(self) -> List[Dict[str, Any]]:
         """Returns the single consistent normalized dataset across all Merchant AI features."""

@@ -826,8 +826,11 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(content_creator_agent.generate_marketing_help(deal))
                 return
 
-        # Milestone 13 Merchant Router Interception
+        # Milestone 13 & Milestone 2 Merchant Router Interception
         if raw_intent.get("is_merchant") or raw_intent["type"].startswith("merchant_"):
+            if raw_intent["type"] in ["merchant_growth_report", "merchant_dashboard"]:
+                await update.message.reply_text(merchant_agent.generate_merchant_growth_report())
+                return
             if raw_intent["type"] == "merchant_review":
                 await merchant_review_handler(update, context)
                 return
@@ -839,9 +842,6 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             if raw_intent["type"] in ["merchant_improve", "merchant_improve_help"]:
                 await merchant_improve_handler(update, context)
-                return
-            if raw_intent["type"] == "merchant_dashboard":
-                await merchant_dashboard_handler(update, context)
                 return
             if raw_intent["type"] == "merchant_health":
                 await merchant_health_handler(update, context)

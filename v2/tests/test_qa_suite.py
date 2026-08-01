@@ -97,7 +97,7 @@ def run_qa_suite():
         },
         {
             "query": "Merchant Dashboard",
-            "expected_intents": ["merchant_dashboard"],
+            "expected_intents": ["merchant_dashboard", "merchant_growth_report"],
             "is_merchant": True,
             "category": "Merchant AI",
             "reason": "Verify Merchant Dashboard stats"
@@ -213,7 +213,7 @@ def run_qa_suite():
         # --- 4. BUSINESS INTELLIGENCE & ANALYTICS TESTS ---
         {
             "query": "Business Dashboard",
-            "expected_intents": ["analytics_dashboard"],
+            "expected_intents": ["analytics_dashboard", "merchant_growth_report"],
             "is_merchant": True,
             "category": "Business Intelligence",
             "reason": "Verify Business Intelligence Dashboard header & KPIs"
@@ -334,7 +334,7 @@ def run_qa_suite():
         },
         {
             "query": "  business dashboard  ",
-            "expected_intents": ["analytics_dashboard"],
+            "expected_intents": ["analytics_dashboard", "merchant_growth_report"],
             "is_merchant": True,
             "category": "Edge Case",
             "reason": "Verify whitespace padding handling"
